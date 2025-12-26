@@ -1,0 +1,23 @@
+export default {
+  light: {
+    text: "#1A1A2E",
+    textSecondary: "#6B7280",
+    background: "#FAFBFC",
+    surface: "#FFFFFF",
+    surfaceSecondary: "#F3F4F6",
+    tint: "#0EA5E9",
+    tintLight: "#E0F2FE",
+    accent: "#10B981",
+    accentLight: "#D1FAE5",
+    error: "#EF4444",
+    errorLight: "#FEE2E2",
+    warning: "#F59E0B",
+    warningLight: "#FEF3C7",
+    border: "#E5E7EB",
+    borderLight: "#F3F4F6",
+    online: "#22C55E",
+    offline: "#9CA3AF",
+    tabIconDefault: "#9CA3AF",
+    tabIconSelected: "#0EA5E9",
+  },
+};
