@@ -136,7 +136,7 @@ export default function LoginScreen() {
                   testID="email-input"
                 />
               </View>
-                {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
+              {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
             </View>
 
             <View style={styles.inputGroup}>

@@ -147,7 +147,7 @@ export default function RegisterScreen() {
                   testID="name-input"
                 />
               </View>
-              {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+              {errors.name ? <Text style={styles.errorText}>{errors.name}</Text> : null}
             </View>
 
             <View style={styles.inputGroup}>
@@ -166,7 +166,7 @@ export default function RegisterScreen() {
                   testID="email-input"
                 />
               </View>
-              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+              {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
             </View>
 
             <View style={styles.inputGroup}>
@@ -193,7 +193,7 @@ export default function RegisterScreen() {
                   )}
                 </TouchableOpacity>
               </View>
-              {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+              {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
             </View>
 
             <View style={styles.inputGroup}>
@@ -220,7 +220,7 @@ export default function RegisterScreen() {
                   )}
                 </TouchableOpacity>
               </View>
-              {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
+              {errors.confirmPassword ? <Text style={styles.errorText}>{errors.confirmPassword}</Text> : null}
             </View>
 
             <TouchableOpacity
