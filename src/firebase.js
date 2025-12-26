@@ -1,20 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
-
-// Analytics sadece tarayıcı ortamında çalışır (SSR uyumlu olsun diye)
-let analytics = null;
-if (typeof window !== "undefined") {
-  // Next.js gibi SSR ortamlarında analytics import'u sadece client'ta yapılmalı
-  import("firebase/analytics").then(({ getAnalytics }) => {
-    try {
-      analytics = getAnalytics(app);
-      console.log("Firebase Analytics initialized");
-    } catch (error) {
-      console.warn("Analytics initialization failed:", error);
-    }
-  });
-}
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAda2d_dvWcM2DZshoG4ner2UbJcbLslHo",
@@ -26,35 +12,22 @@ const firebaseConfig = {
   measurementId: "G-X4K39ZS1Q8",
 };
 
-// Firebase app'i başlat
 const app = initializeApp(firebaseConfig);
 
-// Auth export et
 export const auth = getAuth(app);
+export const db = getFirestore(app);
 
-// Firestore'u persistence ile başlat (web'de IndexedDB)
-export const db = (() => {
-  if (typeof window !== "undefined") {
+let analytics = null;
+if (typeof window !== "undefined") {
+  import("firebase/analytics").then(({ getAnalytics }) => {
     try {
-      const firestore = initializeFirestore(app, {
-        localCache: persistentLocalCache({
-          tabManager: persistentMultipleTabManager()
-        })
-      });
-      console.log("Firestore initialized with persistent cache");
-      return firestore;
+      analytics = getAnalytics(app);
+      console.log("Firebase Analytics initialized");
     } catch (error) {
-      console.warn("Persistence setup failed, using default cache:", error);
-      return initializeFirestore(app, {});
+      console.warn("Analytics initialization failed:", error);
     }
-  } else {
-    return initializeFirestore(app, {});
-  }
-})();
+  });
+}
 
-console.log("Firebase initialized successfully");
-
-// Analytics export et (null olabilir ama hata vermez)
 export { analytics };
-
 export default app;
