@@ -60,7 +60,7 @@ export default function LoginScreen() {
 
   const handleLogin = () => {
     if (validateForm()) {
-      login({ email, password });
+      login({ email: email.trim(), password });
     }
   };
 

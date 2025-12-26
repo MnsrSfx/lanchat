@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Lanchat Rebuild",
-    "slug": "lanchat-rebuild",
+    "slug": "lanchat",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -27,7 +27,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.lanchat.rebuild",
+      "package": "app.lanchat",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
