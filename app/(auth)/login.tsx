@@ -117,6 +117,9 @@ export default function LoginScreen() {
                 <Text style={styles.errorBannerText}>
                   {loginError || googleError}
                 </Text>
+                <Text style={styles.errorHintText}>
+                  Make sure you have an account registered with this email. Try signing up first if you don&apos;t have an account.
+                </Text>
               </View>
             )}
 
@@ -289,6 +292,14 @@ const styles = StyleSheet.create({
     color: Colors.light.error,
     fontSize: 14,
     textAlign: 'center',
+    fontWeight: '600',
+  },
+  errorHintText: {
+    color: Colors.light.error,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 6,
+    opacity: 0.8,
   },
   inputGroup: {
     marginBottom: 16,
