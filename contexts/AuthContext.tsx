@@ -1,6 +1,6 @@
 import createContextHook from '@nkzw/create-context-hook';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { User, AuthState } from '@/types';
 import { MOCK_CURRENT_USER } from '@/mocks/users';
@@ -39,7 +39,6 @@ interface StoredAuth {
 }
 
 export const [AuthProvider, useAuth] = createContextHook(() => {
-  const queryClient = useQueryClient();
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
     isAuthenticated: false,
@@ -217,7 +216,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         isLoading: false,
         needsProfileSetup: data.needsProfileSetup,
       });
-      queryClient.invalidateQueries({ queryKey: ['auth'] });
     },
     onError: (error: any) => {
       console.error('Login mutation failed:', error);
@@ -362,7 +360,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         isLoading: false,
         needsProfileSetup: data.needsProfileSetup,
       });
-      queryClient.invalidateQueries({ queryKey: ['auth'] });
     },
   });
 
@@ -406,7 +403,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         user: data.user,
         needsProfileSetup: false,
       }));
-      queryClient.invalidateQueries({ queryKey: ['auth'] });
     },
   });
 
@@ -444,7 +440,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         needsProfileSetup: false,
       });
       setNeedsEmailVerification(false);
-      queryClient.invalidateQueries({ queryKey: ['auth'] });
     },
     onError: (error) => {
       console.error('Logout mutation error:', error);
@@ -618,7 +613,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         isLoading: false,
         needsProfileSetup: data.authData.needsProfileSetup,
       });
-      queryClient.invalidateQueries({ queryKey: ['auth'] });
     },
     onError: (error: any) => {
       console.error('Google login mutation failed:', error);
