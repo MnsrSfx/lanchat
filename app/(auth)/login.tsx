@@ -9,10 +9,11 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  Modal,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MessageCircle, Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
+import { MessageCircle, Mail, Lock, Eye, EyeOff, X } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import Colors from '@/constants/colors';
 
@@ -25,7 +26,11 @@ export default function LoginScreen() {
     isGoogleLoading, 
     googleError,
     isAuthenticated,
-    needsProfileSetup
+    needsProfileSetup,
+    resetPassword,
+    isResetPasswordLoading,
+    resetPasswordError,
+    resetPasswordSuccess
   } = useAuth();
   const router = useRouter();
 
@@ -33,6 +38,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({ email: '', password: '' });
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetEmailError, setResetEmailError] = useState('');
 
   const validateForm = () => {
     const newErrors = { email: '', password: '' };
@@ -72,6 +80,28 @@ export default function LoginScreen() {
       console.error('Google login failed:', error);
     }
   };
+
+  const handleResetPassword = () => {
+    setResetEmailError('');
+    if (!resetEmail.trim()) {
+      setResetEmailError('Email is required');
+      return;
+    }
+    if (!/\S+@\S+\.\S+/.test(resetEmail)) {
+      setResetEmailError('Please enter a valid email');
+      return;
+    }
+    resetPassword(resetEmail.trim());
+  };
+
+  useEffect(() => {
+    if (resetPasswordSuccess) {
+      setTimeout(() => {
+        setShowResetModal(false);
+        setResetEmail('');
+      }, 2000);
+    }
+  }, [resetPasswordSuccess]);
 
   useEffect(() => {
     if (isAuthenticated && !isLoginLoading && !isGoogleLoading) {
@@ -169,7 +199,13 @@ export default function LoginScreen() {
               {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
             </View>
 
-            <TouchableOpacity style={styles.forgotPassword}>
+            <TouchableOpacity 
+              style={styles.forgotPassword}
+              onPress={() => {
+                setShowResetModal(true);
+                setResetEmail(email);
+              }}
+            >
               <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
             </TouchableOpacity>
 
@@ -221,6 +257,84 @@ export default function LoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showResetModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowResetModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Reset Password</Text>
+              <TouchableOpacity
+                onPress={() => setShowResetModal(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <X size={24} color={Colors.light.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalDescription}>
+              Enter your email address and we&apos;ll send you a link to reset your password.
+            </Text>
+
+            {resetPasswordSuccess && (
+              <View style={styles.successBanner}>
+                <Text style={styles.successBannerText}>
+                  Password reset email sent! Check your inbox.
+                </Text>
+              </View>
+            )}
+
+            {resetPasswordError && (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorBannerText}>{resetPasswordError}</Text>
+              </View>
+            )}
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email</Text>
+              <View style={[styles.inputContainer, resetEmailError && styles.inputError]}>
+                <Mail size={20} color={Colors.light.textSecondary} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter your email"
+                  placeholderTextColor={Colors.light.textSecondary}
+                  value={resetEmail}
+                  onChangeText={(text) => {
+                    setResetEmail(text);
+                    setResetEmailError('');
+                  }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!resetPasswordSuccess}
+                />
+              </View>
+              {resetEmailError ? <Text style={styles.errorText}>{resetEmailError}</Text> : null}
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.resetButton,
+                (isResetPasswordLoading || resetPasswordSuccess) && styles.resetButtonDisabled
+              ]}
+              onPress={handleResetPassword}
+              disabled={isResetPasswordLoading || resetPasswordSuccess}
+            >
+              {isResetPasswordLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.resetButtonText}>
+                  {resetPasswordSuccess ? 'Email Sent!' : 'Send Reset Link'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -425,6 +539,70 @@ const styles = StyleSheet.create({
   signupLink: {
     color: Colors.light.tint,
     fontSize: 14,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.light.text,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  resetButton: {
+    backgroundColor: Colors.light.tint,
+    height: 52,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  resetButtonDisabled: {
+    opacity: 0.7,
+  },
+  resetButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  successBanner: {
+    backgroundColor: '#D1FAE5',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  successBannerText: {
+    color: '#059669',
+    fontSize: 14,
+    textAlign: 'center',
     fontWeight: '600',
   },
 });

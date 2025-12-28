@@ -14,7 +14,8 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
-  getRedirectResult
+  getRedirectResult,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { Platform } from 'react-native';
@@ -454,6 +455,30 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     },
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (email: string) => {
+      try {
+        console.log('Sending password reset email to:', email);
+        await sendPasswordResetEmail(auth, email);
+        console.log('Password reset email sent successfully');
+        return true;
+      } catch (error: any) {
+        console.error('Password reset error:', error);
+        let userFriendlyMessage = 'Failed to send password reset email.';
+        
+        if (error.code === 'auth/user-not-found') {
+          userFriendlyMessage = 'No account found with this email.';
+        } else if (error.code === 'auth/invalid-email') {
+          userFriendlyMessage = 'Invalid email address.';
+        } else if (error.code === 'auth/too-many-requests') {
+          userFriendlyMessage = 'Too many requests. Please try again later.';
+        }
+        
+        throw new Error(userFriendlyMessage);
+      }
+    },
+  });
+
   const googleLoginMutation = useMutation({
     mutationFn: async (): Promise<{ authData: StoredAuth; shouldRedirect: boolean }> => {
       try {
@@ -631,14 +656,18 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     updateProfile: updateProfileMutation.mutate,
     logout: logoutMutation.mutate,
     resendVerification: resendVerificationMutation.mutate,
+    resetPassword: resetPasswordMutation.mutate,
     isLoginLoading: loginMutation.isPending,
     isRegisterLoading: registerMutation.isPending,
     isGoogleLoading: googleLoginMutation.isPending,
     isVerifyLoading: verifyEmailMutation.isPending,
     isUpdateLoading: updateProfileMutation.isPending,
+    isResetPasswordLoading: resetPasswordMutation.isPending,
     loginError: loginMutation.error?.message,
     registerError: registerMutation.error?.message,
     googleError: googleLoginMutation.error?.message,
     verifyError: verifyEmailMutation.error?.message,
+    resetPasswordError: resetPasswordMutation.error?.message,
+    resetPasswordSuccess: resetPasswordMutation.isSuccess,
   };
 });
