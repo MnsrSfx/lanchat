@@ -26,7 +26,6 @@ export default function LoginScreen() {
     isGoogleLoading, 
     googleError,
     isAuthenticated,
-    needsProfileSetup,
     resetPassword,
     isResetPasswordLoading,
     resetPasswordError,
@@ -104,15 +103,10 @@ export default function LoginScreen() {
   }, [resetPasswordSuccess]);
 
   useEffect(() => {
-    if (isAuthenticated && !isLoginLoading && !isGoogleLoading) {
-      console.log('Login successful, redirecting...', { needsProfileSetup });
-      if (needsProfileSetup) {
-        router.replace('/profile-setup');
-      } else {
-        router.replace('/(tabs)/community');
-      }
+    if (!isLoginLoading && !isGoogleLoading && isAuthenticated) {
+      router.replace('/');
     }
-  }, [isAuthenticated, isLoginLoading, isGoogleLoading, needsProfileSetup, router]);
+  }, [isAuthenticated, isLoginLoading, isGoogleLoading, router]);
 
   return (
     <LinearGradient
