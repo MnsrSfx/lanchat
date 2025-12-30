@@ -142,7 +142,10 @@ export default function LoginScreen() {
                   {loginError || googleError}
                 </Text>
                 <Text style={styles.errorHintText}>
-                  Make sure you have an account registered with this email. Try signing up first if you don&apos;t have an account.
+                  Sorunlar:{"\n"}
+                  • Firebase Console&apos;da authorized domains&apos;e www.lanchat.site eklediniz mi?{"\n"}
+                  • Önce kayıt olup hesap oluşturdunuz mu?{"\n"}
+                  • Şifreyi doğru yazdığınızdan emin misiniz?
                 </Text>
               </View>
             )}
