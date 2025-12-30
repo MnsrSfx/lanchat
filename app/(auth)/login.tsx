@@ -11,7 +11,7 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MessageCircle, Mail, Lock, Eye, EyeOff, X } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,13 +25,11 @@ export default function LoginScreen() {
     loginWithGoogle, 
     isGoogleLoading, 
     googleError,
-    isAuthenticated,
     resetPassword,
     isResetPasswordLoading,
     resetPasswordError,
     resetPasswordSuccess
   } = useAuth();
-  const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -101,12 +99,6 @@ export default function LoginScreen() {
       }, 2000);
     }
   }, [resetPasswordSuccess]);
-
-  useEffect(() => {
-    if (!isLoginLoading && !isGoogleLoading && isAuthenticated) {
-      router.replace('/');
-    }
-  }, [isAuthenticated, isLoginLoading, isGoogleLoading, router]);
 
   return (
     <LinearGradient
