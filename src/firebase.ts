@@ -12,21 +12,29 @@ const firebaseConfig = {
   measurementId: "G-X4K39ZS1Q8",
 };
 
-let app: FirebaseApp;
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+
 try {
   app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
   console.log('Firebase app initialized successfully');
+  
+  auth = getAuth(app);
+  db = getFirestore(app);
+  
+  console.log('Firebase auth and db initialized successfully');
+  console.log('Auth object:', auth);
+  console.log('DB object:', db);
 } catch (error) {
-  console.error('Firebase app initialization error:', error);
-  throw new Error('Failed to initialize Firebase app');
+  console.error('Firebase initialization error:', error);
+  console.error('Please check your Firebase configuration');
 }
 
-const auth: Auth = getAuth(app);
-const db: Firestore = getFirestore(app);
-
-console.log('Firebase auth and db initialized successfully');
-console.log('Auth object:', auth);
-console.log('DB object:', db);
+if (!auth || !db) {
+  console.error('CRITICAL: Firebase auth or db not initialized!');
+  console.error('Config:', firebaseConfig);
+}
 
 export { auth, db };
 

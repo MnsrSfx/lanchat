@@ -42,13 +42,13 @@ interface StoredAuth {
 }
 
 export const [AuthProvider, useAuth] = createContextHook(() => {
-  if (!auth || !db) {
-    console.error('Firebase auth veya db nesnesi yüklenmedi! firebase.js\'yi kontrol et.');
-    throw new Error('Firebase is not initialized. Please check your configuration.');
-  }
-  
   const firebaseAuth = auth as Auth;
   const firebaseDb = db as Firestore;
+  
+  if (!firebaseAuth || !firebaseDb) {
+    console.error('Firebase auth veya db nesnesi yüklenmedi! firebase.js\'yi kontrol et.');
+    console.error('Auth:', firebaseAuth, 'DB:', firebaseDb);
+  }
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
     isAuthenticated: false,
