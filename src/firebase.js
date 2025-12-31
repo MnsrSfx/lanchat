@@ -24,12 +24,7 @@ try {
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-if (!auth || !db) {
-  console.error('Firebase auth veya db nesnesi yüklenmedi! firebase.js\'yi kontrol et.');
-  throw new Error('Firebase initialization failed: auth or db is null');
-}
-
-console.log('Firebase auth and db initialized:', { auth: !!auth, db: !!db });
+console.log('Firebase auth and db initialized successfully');
 
 let analytics = null;
 if (typeof window !== "undefined") {
