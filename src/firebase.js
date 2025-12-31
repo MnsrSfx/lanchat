@@ -12,10 +12,24 @@ const firebaseConfig = {
   measurementId: "G-X4K39ZS1Q8",
 };
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+let app;
+try {
+  app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+  console.log('Firebase app initialized successfully');
+} catch (error) {
+  console.error('Firebase initialization error:', error);
+  throw error;
+}
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+if (!auth || !db) {
+  console.error('Firebase auth veya db nesnesi yüklenmedi! firebase.js\'yi kontrol et.');
+  throw new Error('Firebase initialization failed: auth or db is null');
+}
+
+console.log('Firebase auth and db initialized:', { auth: !!auth, db: !!db });
 
 let analytics = null;
 if (typeof window !== "undefined") {
