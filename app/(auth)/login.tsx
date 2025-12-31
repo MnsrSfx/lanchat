@@ -11,7 +11,7 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MessageCircle, Mail, Lock, Eye, EyeOff, X } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,8 +28,11 @@ export default function LoginScreen() {
     resetPassword,
     isResetPasswordLoading,
     resetPasswordError,
-    resetPasswordSuccess
+    resetPasswordSuccess,
+    isAuthenticated,
+    needsProfileSetup
   } = useAuth();
+  const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -63,9 +66,13 @@ export default function LoginScreen() {
     return isValid;
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (validateForm()) {
-      login({ email: email.trim(), password });
+      try {
+        await login({ email: email.trim(), password });
+      } catch (error) {
+        console.error('Login failed:', error);
+      }
     }
   };
 
@@ -99,6 +106,16 @@ export default function LoginScreen() {
       }, 2000);
     }
   }, [resetPasswordSuccess]);
+
+  useEffect(() => {
+    if (isAuthenticated && !needsProfileSetup) {
+      console.log('Login successful, navigating to community...');
+      router.replace('/(tabs)/community');
+    } else if (isAuthenticated && needsProfileSetup) {
+      console.log('Login successful, navigating to profile setup...');
+      router.replace('/profile-setup');
+    }
+  }, [isAuthenticated, needsProfileSetup, router]);
 
   return (
     <LinearGradient
