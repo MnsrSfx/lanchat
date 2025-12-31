@@ -60,7 +60,10 @@ export default function ChatScreen() {
 
   useEffect(() => {
     const fetchUser = async () => {
-      if (!userId) return;
+      if (!userId || !db) {
+        setLoading(false);
+        return;
+      }
       try {
         const userDoc = await getDoc(doc(db, 'users', userId));
         if (userDoc.exists()) {

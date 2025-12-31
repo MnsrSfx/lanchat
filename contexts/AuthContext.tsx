@@ -5,6 +5,8 @@ import { useState, useEffect } from 'react';
 import { User, AuthState } from '@/types';
 import { MOCK_CURRENT_USER } from '@/mocks/users';
 import { auth, db } from '@/src/firebase';
+import type { Auth } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -40,6 +42,13 @@ interface StoredAuth {
 }
 
 export const [AuthProvider, useAuth] = createContextHook(() => {
+  if (!auth || !db) {
+    console.error('Firebase auth veya db nesnesi yüklenmedi! firebase.js\'yi kontrol et.');
+    throw new Error('Firebase is not initialized. Please check your configuration.');
+  }
+  
+  const firebaseAuth = auth as Auth;
+  const firebaseDb = db as Firestore;
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
     isAuthenticated: false,
@@ -84,14 +93,14 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   }, [authQuery.data]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
       if (firebaseUser) {
         const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
         if (stored) {
           const parsed: StoredAuth = JSON.parse(stored);
           if (parsed.user) {
             try {
-              await setDoc(doc(db, 'users', firebaseUser.uid), {
+              await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), {
                 isOnline: true,
                 lastSeen: serverTimestamp(),
               }, { merge: true });
@@ -104,7 +113,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [firebaseAuth, firebaseDb]);
 
   const loginMutation = useMutation({
     mutationFn: async ({ email, password }: { email: string; password: string }) => {
@@ -112,7 +121,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         console.log('Login attempt for:', email);
         
         const userCredential = await withTimeout(
-          signInWithEmailAndPassword(auth, email, password),
+          signInWithEmailAndPassword(firebaseAuth, email, password),
           AUTH_TIMEOUT_MS
         );
         const firebaseUser = userCredential.user;
@@ -150,7 +159,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         }
 
         console.log('Updating user document in Firestore...');
-        await setDoc(doc(db, 'users', firebaseUser.uid), {
+        await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), {
           uid: firebaseUser.uid,
           email: user.email,
           displayName: user.name,
@@ -230,7 +239,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         console.log('Register attempt for:', email);
         
         const userCredential = await withTimeout(
-          createUserWithEmailAndPassword(auth, email, password),
+          createUserWithEmailAndPassword(firebaseAuth, email, password),
           AUTH_TIMEOUT_MS
         );
         const firebaseUser = userCredential.user;
@@ -261,7 +270,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         };
 
         console.log('Creating user document in Firestore...');
-        await setDoc(doc(db, 'users', firebaseUser.uid), {
+        await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), {
           uid: firebaseUser.uid,
           email: user.email,
           displayName: user.name,
@@ -387,7 +396,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             
             if (Object.keys(updateData).length > 0) {
               // @ts-expect-error - Firestore type issue with dynamic object
-              await setDoc(doc(db, 'users', parsed.user.uid), updateData, { merge: true });
+              await setDoc(doc(firebaseDb, 'users', parsed.user.uid), updateData, { merge: true });
             }
           } catch (error) {
             console.log('Error updating profile in Firestore:', error);
@@ -416,7 +425,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         if (parsed.user?.uid) {
           console.log('Updating user offline status for uid:', parsed.user.uid);
           try {
-            await setDoc(doc(db, 'users', parsed.user.uid), {
+            await setDoc(doc(firebaseDb, 'users', parsed.user.uid), {
               isOnline: false,
               lastSeen: serverTimestamp(),
             }, { merge: true });
@@ -427,7 +436,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         }
       }
       console.log('Signing out from Firebase...');
-      await signOut(auth);
+      await signOut(firebaseAuth);
       console.log('Clearing local storage...');
       await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
       console.log('Logout completed');
@@ -459,7 +468,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     mutationFn: async (email: string) => {
       try {
         console.log('Sending password reset email to:', email);
-        await sendPasswordResetEmail(auth, email);
+        await sendPasswordResetEmail(firebaseAuth, email);
         console.log('Password reset email sent successfully');
         return true;
       } catch (error: any) {
@@ -491,12 +500,12 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         let result;
         if (Platform.OS === 'web') {
           console.log('Using signInWithPopup for web');
-          result = await signInWithPopup(auth, provider);
+          result = await signInWithPopup(firebaseAuth, provider);
           console.log('signInWithPopup result:', result);
         } else {
           console.log('Using signInWithRedirect for native');
-          await signInWithRedirect(auth, provider);
-          result = await getRedirectResult(auth);
+          await signInWithRedirect(firebaseAuth, provider);
+          result = await getRedirectResult(firebaseAuth);
           if (!result) {
             throw new Error('Redirect result is null');
           }
@@ -509,7 +518,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         let needsProfileSetup = false;
         
         try {
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const userDocRef = doc(firebaseDb, 'users', firebaseUser.uid);
           const userDoc = await getDoc(userDocRef);
           
           if (userDoc.exists()) {
@@ -577,7 +586,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         }
         
         try {
-          await setDoc(doc(db, 'users', firebaseUser.uid), {
+          await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), {
             uid: firebaseUser.uid,
             email: user.email,
             displayName: user.name,

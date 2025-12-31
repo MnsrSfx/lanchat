@@ -1,6 +1,6 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
+import { getAuth, Auth } from "firebase/auth";
+import { getFirestore, Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAda2d_dvWcM2DZshoG4ner2UbJcbLslHo",
@@ -12,26 +12,32 @@ const firebaseConfig = {
   measurementId: "G-X4K39ZS1Q8",
 };
 
-let app;
+let app: FirebaseApp;
 try {
   app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
   console.log('Firebase app initialized successfully');
 } catch (error) {
-  console.error('Firebase initialization error:', error);
-  throw error;
+  console.error('Firebase app initialization error:', error);
+  throw new Error('Failed to initialize Firebase app');
 }
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+const auth: Auth = getAuth(app);
+const db: Firestore = getFirestore(app);
 
 console.log('Firebase auth and db initialized successfully');
+console.log('Auth object:', auth);
+console.log('DB object:', db);
 
-let analytics = null;
+export { auth, db };
+
+let analytics: any = null;
 if (typeof window !== "undefined") {
   import("firebase/analytics").then(({ getAnalytics }) => {
     try {
-      analytics = getAnalytics(app);
-      console.log("Firebase Analytics initialized");
+      if (app) {
+        analytics = getAnalytics(app);
+        console.log("Firebase Analytics initialized");
+      }
     } catch (error) {
       console.warn("Analytics initialization failed:", error);
     }

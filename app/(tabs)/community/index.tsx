@@ -29,6 +29,12 @@ export default function CommunityScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!db) {
+      console.error('Firestore is not initialized');
+      setLoading(false);
+      return;
+    }
+    
     const usersQuery = query(collection(db, 'users'));
     
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
