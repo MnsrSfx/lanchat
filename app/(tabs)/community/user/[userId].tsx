@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,25 +6,73 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { MapPin, MessageCircle, Phone, Video, Shield, Clock } from 'lucide-react-native';
-import { MOCK_USERS } from '@/mocks/users';
 import Colors from '@/constants/colors';
 import PhotoGalleryModal from '@/components/PhotoGalleryModal';
+import { db } from '@/src/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { User } from '@/types';
 
 export default function UserProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
-  const user = MOCK_USERS.find(u => u.id === userId);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
 
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (!userId) return;
+      try {
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setUser({
+            id: userDoc.id,
+            uid: data.uid,
+            email: data.email || '',
+            name: data.displayName || '',
+            avatar: data.photoURL || '',
+            photos: data.photos || [],
+            bio: data.bio || '',
+            nativeLanguage: data.nativeLanguage || { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
+            learningLanguages: data.learningLanguages || [],
+            isOnline: data.isOnline || false,
+            lastSeen: data.lastSeen?.toDate() || new Date(),
+            country: data.country || '',
+            city: data.city || '',
+            age: data.age || 0,
+            isVerified: data.isVerified || false,
+            createdAt: data.createdAt?.toDate() || new Date(),
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUser();
+  }, [userId]);
+
   const photos = user?.photos && user.photos.length > 0 ? user.photos : user?.avatar ? [user.avatar] : [];
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={Colors.light.tint} />
+      </View>
+    );
+  }
 
   if (!user) {
     return (
-      <View style={styles.container}>
-        <Text>User not found</Text>
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>User not found</Text>
       </View>
     );
   }
@@ -187,6 +235,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: Colors.light.textSecondary,
   },
   header: {
     alignItems: 'center',

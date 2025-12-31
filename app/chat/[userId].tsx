@@ -13,6 +13,7 @@ import {
   Modal,
   Pressable,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,8 +33,10 @@ import {
   Languages,
   Flag,
 } from 'lucide-react-native';
-import { MOCK_USERS, MOCK_MESSAGES, MOCK_CURRENT_USER } from '@/mocks/users';
-import { Message } from '@/types';
+import { MOCK_MESSAGES, MOCK_CURRENT_USER } from '@/mocks/users';
+import { Message, User } from '@/types';
+import { db } from '@/src/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { trpc } from '@/lib/trpc';
@@ -41,7 +44,8 @@ import { trpc } from '@/lib/trpc';
 export default function ChatScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const { user: currentUser } = useAuth();
-  const user = MOCK_USERS.find(u => u.id === userId);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES.filter(m => m.chatId === 'chat1'));
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -53,6 +57,42 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (!userId) return;
+      try {
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setUser({
+            id: userDoc.id,
+            uid: data.uid,
+            email: data.email || '',
+            name: data.displayName || '',
+            avatar: data.photoURL || '',
+            photos: data.photos || [],
+            bio: data.bio || '',
+            nativeLanguage: data.nativeLanguage || { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
+            learningLanguages: data.learningLanguages || [],
+            isOnline: data.isOnline || false,
+            lastSeen: data.lastSeen?.toDate() || new Date(),
+            country: data.country || '',
+            city: data.city || '',
+            age: data.age || 0,
+            isVerified: data.isVerified || false,
+            createdAt: data.createdAt?.toDate() || new Date(),
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUser();
+  }, [userId]);
 
   useEffect(() => {
     if (isRecording) {
@@ -89,10 +129,18 @@ export default function ChatScreen() {
     };
   }, [isRecording, recordingAnimation]);
 
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={Colors.light.tint} />
+      </View>
+    );
+  }
+
   if (!user) {
     return (
-      <View style={styles.container}>
-        <Text>User not found</Text>
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>User not found</Text>
       </View>
     );
   }
@@ -472,6 +520,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: Colors.light.textSecondary,
   },
   keyboardView: {
     flex: 1,
