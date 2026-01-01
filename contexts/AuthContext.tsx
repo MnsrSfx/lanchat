@@ -42,14 +42,20 @@ interface StoredAuth {
 }
 
 export const [AuthProvider, useAuth] = createContextHook(() => {
+  console.log('🔍 AuthContext initializing...');
+  console.log('Auth status:', auth ? '✅ Loaded' : '❌ Not loaded');
+  console.log('DB status:', db ? '✅ Loaded' : '❌ Not loaded');
+  
   if (!auth || !db) {
-    console.error('❌ Firebase auth veya db nesnesi yüklenmedi! firebase.js\'yi kontrol et.');
-    console.error('Auth:', auth, 'DB:', db);
-    throw new Error('Firebase initialization failed');
+    console.error('❌ Firebase auth veya db nesnesi yüklenmedi!');
+    console.error('Auth:', auth);
+    console.error('DB:', db);
+    console.error('Bu genellikle Firebase config hatası veya network problemi yüzünden olur.');
+    console.error('Lütfen internet bağlantınızı kontrol edin ve sayfayı yenileyin.');
   }
   
-  const firebaseAuth = auth as Auth;
-  const firebaseDb = db as Firestore;
+  const firebaseAuth = auth as Auth | undefined;
+  const firebaseDb = db as Firestore | undefined;
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
     isAuthenticated: false,
@@ -94,6 +100,11 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   }, [authQuery.data]);
 
   useEffect(() => {
+    if (!firebaseAuth) {
+      console.error('❌ Firebase auth not available, skipping onAuthStateChanged');
+      return;
+    }
+    
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
       if (firebaseUser) {
         const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
@@ -101,6 +112,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           const parsed: StoredAuth = JSON.parse(stored);
           if (parsed.user) {
             try {
+              if (!firebaseDb) {
+                console.error('❌ Firestore not available');
+                return;
+              }
               await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), {
                 isOnline: true,
                 lastSeen: serverTimestamp(),
@@ -113,11 +128,19 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, [firebaseAuth, firebaseDb]);
 
   const loginMutation = useMutation({
     mutationFn: async ({ email, password }: { email: string; password: string }) => {
+      if (!firebaseAuth || !firebaseDb) {
+        throw new Error('Firebase is not initialized. Please refresh the page.');
+      }
+      
       try {
         console.log('Login attempt for:', email);
         
@@ -236,6 +259,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const registerMutation = useMutation({
     mutationFn: async ({ email, password, name }: { email: string; password: string; name: string }) => {
+      if (!firebaseAuth || !firebaseDb) {
+        throw new Error('Firebase is not initialized. Please refresh the page.');
+      }
+      
       try {
         console.log('Register attempt for:', email);
         
@@ -395,7 +422,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             if (updates.age !== undefined) updateData.age = updates.age;
             if (updates.photos) updateData.photos = updates.photos;
             
-            if (Object.keys(updateData).length > 0) {
+            if (Object.keys(updateData).length > 0 && firebaseDb) {
               // @ts-expect-error - Firestore type issue with dynamic object
               await setDoc(doc(firebaseDb, 'users', parsed.user.uid), updateData, { merge: true });
             }
@@ -419,11 +446,17 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
+      if (!firebaseAuth) {
+        console.error('❌ Firebase auth not available for logout');
+        await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+        return;
+      }
+      
       console.log('Logout started...');
       const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
         const parsed: StoredAuth = JSON.parse(stored);
-        if (parsed.user?.uid) {
+        if (parsed.user?.uid && firebaseDb) {
           console.log('Updating user offline status for uid:', parsed.user.uid);
           try {
             await setDoc(doc(firebaseDb, 'users', parsed.user.uid), {
@@ -467,6 +500,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const resetPasswordMutation = useMutation({
     mutationFn: async (email: string) => {
+      if (!firebaseAuth) {
+        throw new Error('Firebase is not initialized. Please refresh the page.');
+      }
+      
       try {
         console.log('Sending password reset email to:', email);
         await sendPasswordResetEmail(firebaseAuth, email);
@@ -491,6 +528,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const googleLoginMutation = useMutation({
     mutationFn: async (): Promise<{ authData: StoredAuth; shouldRedirect: boolean }> => {
+      if (!firebaseAuth || !firebaseDb) {
+        throw new Error('Firebase is not initialized. Please refresh the page.');
+      }
+      
       try {
         console.log('Google login attempt, Platform:', Platform.OS);
         const provider = new GoogleAuthProvider();
