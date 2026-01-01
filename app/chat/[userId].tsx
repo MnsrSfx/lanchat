@@ -60,19 +60,30 @@ export default function ChatScreen() {
 
   useEffect(() => {
     const fetchUser = async () => {
-      if (!userId || !db) {
+      if (!userId) {
+        console.error('❌ No userId provided to chat screen');
         setLoading(false);
         return;
       }
+      
+      if (!db) {
+        console.error('❌ Firebase db not initialized');
+        setLoading(false);
+        return;
+      }
+      
       try {
+        console.log('📥 Fetching user data for userId:', userId);
         const userDoc = await getDoc(doc(db, 'users', userId));
+        
         if (userDoc.exists()) {
           const data = userDoc.data();
+          console.log('✅ User data fetched successfully:', data.displayName);
           setUser({
             id: userDoc.id,
             uid: data.uid,
             email: data.email || '',
-            name: data.displayName || '',
+            name: data.displayName || data.email?.split('@')[0] || 'Unknown User',
             avatar: data.photoURL || '',
             photos: data.photos || [],
             bio: data.bio || '',
@@ -86,9 +97,11 @@ export default function ChatScreen() {
             isVerified: data.isVerified || false,
             createdAt: data.createdAt?.toDate() || new Date(),
           });
+        } else {
+          console.error('❌ User document not found for userId:', userId);
         }
       } catch (error) {
-        console.error('Error fetching user:', error);
+        console.error('❌ Error fetching user:', error);
       } finally {
         setLoading(false);
       }
@@ -144,6 +157,15 @@ export default function ChatScreen() {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <Text style={styles.errorText}>User not found</Text>
+        <Text style={[styles.errorText, { fontSize: 14, marginTop: 8 }]}>
+          {userId ? `User ID: ${userId}` : 'No user ID provided'}
+        </Text>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -531,6 +553,18 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     color: Colors.light.textSecondary,
+  },
+  backButton: {
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 8,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600' as const,
   },
   keyboardView: {
     flex: 1,
