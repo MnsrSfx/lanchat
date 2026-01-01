@@ -3,7 +3,7 @@ import { getAuth, Auth } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAda2d_dvWcM2DZshoG4ner2UbJcbLslHo",
+  apiKey: "",
   authDomain: "lanchat5.firebaseapp.com",
   projectId: "lanchat5",
   storageBucket: "lanchat5.firebasestorage.app",
