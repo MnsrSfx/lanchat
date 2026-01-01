@@ -57,6 +57,7 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const translateMutation = trpc.translate.useMutation();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -273,8 +274,6 @@ export default function ChatScreen() {
     setShowMessageMenu(false);
     setSelectedMessageId(null);
   };
-
-  const translateMutation = trpc.translate.useMutation();
 
   const handleTranslateMessage = async () => {
     if (selectedMessageId) {
