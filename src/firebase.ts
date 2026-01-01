@@ -3,13 +3,13 @@ import { getAuth, Auth } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "",
-  authDomain: "lanchat5.firebaseapp.com",
-  projectId: "lanchat5",
-  storageBucket: "lanchat5.firebasestorage.app",
-  messagingSenderId: "631860647802",
-  appId: "1:631860647802:web:04ea48b7a0b918ce7128c3",
-  measurementId: "G-X4K39ZS1Q8",
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 let app: FirebaseApp | undefined;
@@ -18,6 +18,16 @@ let db: Firestore | undefined;
 
 try {
   console.log('🔄 Initializing Firebase...');
+  console.log('Config check:', {
+    hasApiKey: !!firebaseConfig.apiKey,
+    hasAuthDomain: !!firebaseConfig.authDomain,
+    hasProjectId: !!firebaseConfig.projectId,
+  });
+  
+  if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
+    throw new Error('Missing Firebase configuration. Please check environment variables.');
+  }
+  
   app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
   console.log('✅ Firebase app initialized successfully');
   
@@ -25,18 +35,16 @@ try {
   db = getFirestore(app);
   
   if (!auth) {
-    console.error('❌ Failed to initialize Firebase Auth');
+    throw new Error('Failed to initialize Firebase Auth');
   }
   if (!db) {
-    console.error('❌ Failed to initialize Firestore');
+    throw new Error('Failed to initialize Firestore');
   }
   
-  if (auth && db) {
-    console.log('✅ Firebase auth and db initialized successfully');
-  }
+  console.log('✅ Firebase auth and db initialized successfully');
 } catch (error) {
   console.error('❌ Firebase initialization error:', error);
-  console.error('Config used:', { ...firebaseConfig, apiKey: firebaseConfig.apiKey.substring(0, 10) + '...' });
+  console.error('Make sure EXPO_PUBLIC_FIREBASE_* environment variables are set');
 }
 
 export { auth, db };
