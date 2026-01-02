@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, FlatList } from 'react-native';
-import { trpc, getTRPCClient } from '../lib/trpc';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { MOCK_USERS, MOCK_CHATS, MOCK_MESSAGES } from '../mocks/users';
 import { LANGUAGES } from '../constants/languages';
@@ -9,7 +8,6 @@ import Colors from '../constants/colors';
 import type { User, Chat, Message } from '../types';
 
 const queryClient = new QueryClient();
-const trpcClient = getTRPCClient();
 
 function LoginScreen({ onNavigate }: { onNavigate: (screen: string) => void }) {
   const { login, isLoginLoading, loginError } = useAuth();
@@ -514,13 +512,11 @@ function MainApp() {
 
 export default function App() {
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <MainApp />
-        </AuthProvider>
-      </QueryClientProvider>
-    </trpc.Provider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <MainApp />
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
 

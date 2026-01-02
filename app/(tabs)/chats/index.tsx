@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,20 +7,123 @@ import {
   TouchableOpacity,
   Image,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { router, Stack } from 'expo-router';
-import { Search, Mic } from 'lucide-react-native';
-import { MOCK_CHATS, MOCK_CURRENT_USER } from '@/mocks/users';
-import { Chat } from '@/types';
+import { Search, MessageCircle } from 'lucide-react-native';
+import { useAuth } from '@/contexts/AuthContext';
+import { db } from '@/src/firebase';
+import { collection, query, where, orderBy, getDocs, limit, Timestamp } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 
-export default function ChatsScreen() {
-  const [searchQuery, setSearchQuery] = useState('');
+interface ChatItem {
+  id: string;
+  otherUser: {
+    id: string;
+    name: string;
+    avatar: string;
+    isOnline: boolean;
+  };
+  lastMessage?: {
+    content: string;
+    senderId: string;
+    type: string;
+    createdAt: Date;
+    voiceDuration?: number;
+  };
+  unreadCount: number;
+  updatedAt: Date;
+}
 
-  const filteredChats = MOCK_CHATS.filter(chat => {
-    const otherUser = chat.participants.find(p => p.id !== MOCK_CURRENT_USER.id);
-    return otherUser?.name.toLowerCase().includes(searchQuery.toLowerCase());
-  });
+export default function ChatsScreen() {
+  const { user: currentUser } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [chats, setChats] = useState<ChatItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!currentUser?.uid || !db) {
+      console.log('⚠️ No current user or db, skipping chats listener');
+      setLoading(false);
+      return;
+    }
+
+    console.log('📡 Setting up chats listener for user:', currentUser.uid);
+
+    const chatsRef = collection(db, 'chats');
+    const fetchChats = async () => {
+      try {
+        const allChatsSnapshot = await getDocs(chatsRef);
+        const userChats: ChatItem[] = [];
+
+        for (const chatDoc of allChatsSnapshot.docs) {
+          const chatId = chatDoc.id;
+          const participants = chatId.split('_');
+          
+          if (currentUser.uid && participants.includes(currentUser.uid)) {
+            const otherUserId = participants.find(id => id !== currentUser.uid);
+            if (!otherUserId || !db) continue;
+
+            const userDocRef = await getDocs(query(collection(db, 'users'), where('uid', '==', otherUserId), limit(1)));
+            if (userDocRef.empty) continue;
+
+            const otherUserData = userDocRef.docs[0].data();
+            
+            const messagesRef = collection(db, 'chats', chatId, 'messages');
+            const lastMessageQuery = query(messagesRef, orderBy('createdAt', 'desc'), limit(1));
+            const messagesSnapshot = await getDocs(lastMessageQuery);
+
+            let lastMessage;
+            if (!messagesSnapshot.empty) {
+              const lastMsg = messagesSnapshot.docs[0].data();
+              lastMessage = {
+                content: lastMsg.content || '',
+                senderId: lastMsg.senderId || '',
+                type: lastMsg.type || 'text',
+                createdAt: lastMsg.createdAt instanceof Timestamp ? lastMsg.createdAt.toDate() : new Date(),
+                voiceDuration: lastMsg.voiceDuration,
+              };
+            }
+
+            const unreadQuery = query(messagesRef, where('isRead', '==', false), where('senderId', '!=', currentUser.uid));
+            const unreadSnapshot = await getDocs(unreadQuery);
+
+            userChats.push({
+              id: chatId,
+              otherUser: {
+                id: otherUserId,
+                name: otherUserData.displayName || 'Unknown User',
+                avatar: otherUserData.photoURL || '',
+                isOnline: otherUserData.isOnline || false,
+              },
+              lastMessage,
+              unreadCount: unreadSnapshot.size,
+              updatedAt: lastMessage?.createdAt || new Date(0),
+            });
+          }
+        }
+
+        userChats.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+        setChats(userChats);
+        setLoading(false);
+      } catch (error) {
+        console.error('❌ Error fetching chats:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchChats();
+
+    const interval = setInterval(fetchChats, 5000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [currentUser?.uid]);
+
+  const filteredChats = chats.filter(chat => 
+    chat.otherUser.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const formatTime = (date: Date) => {
     const now = new Date();
@@ -38,24 +141,24 @@ export default function ChatsScreen() {
     return chatDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
-  const renderChatItem = ({ item }: { item: Chat }) => {
-    const otherUser = item.participants.find(p => p.id !== MOCK_CURRENT_USER.id);
-    if (!otherUser) return null;
-
+  const renderChatItem = ({ item }: { item: ChatItem }) => {
     return (
       <TouchableOpacity
         style={styles.chatItem}
-        onPress={() => router.push(`/chat/${otherUser.id}` as any)}
+        onPress={() => router.push(`/chat/${item.otherUser.id}` as any)}
         activeOpacity={0.7}
       >
         <View style={styles.avatarContainer}>
-          <Image source={{ uri: otherUser.avatar }} style={styles.avatar} />
-          <View style={[styles.onlineIndicator, otherUser.isOnline ? styles.online : styles.offline]} />
+          <Image 
+            source={{ uri: item.otherUser.avatar || 'https://via.placeholder.com/56' }} 
+            style={styles.avatar} 
+          />
+          <View style={[styles.onlineIndicator, item.otherUser.isOnline ? styles.online : styles.offline]} />
         </View>
 
         <View style={styles.chatContent}>
           <View style={styles.chatHeader}>
-            <Text style={styles.userName}>{otherUser.name}</Text>
+            <Text style={styles.userName}>{item.otherUser.name}</Text>
             <Text style={[styles.time, item.unreadCount > 0 && styles.timeUnread]}>
               {formatTime(item.updatedAt)}
             </Text>
@@ -64,7 +167,7 @@ export default function ChatsScreen() {
           <View style={styles.messageRow}>
             {item.lastMessage?.type === 'voice' ? (
               <View style={styles.voiceMessage}>
-                <Mic size={14} color={Colors.light.textSecondary} />
+                <MessageCircle size={14} color={Colors.light.textSecondary} />
                 <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}>
                   Voice message ({item.lastMessage.voiceDuration}s)
                 </Text>
@@ -74,7 +177,7 @@ export default function ChatsScreen() {
                 style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}
                 numberOfLines={1}
               >
-                {item.lastMessage?.senderId === MOCK_CURRENT_USER.id ? 'You: ' : ''}
+                {item.lastMessage?.senderId === currentUser?.uid ? 'You: ' : ''}
                 {item.lastMessage?.content || 'No messages yet'}
               </Text>
             )}
@@ -88,6 +191,14 @@ export default function ChatsScreen() {
       </TouchableOpacity>
     );
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={Colors.light.tint} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -138,6 +249,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   searchContainer: {
     paddingHorizontal: 16,

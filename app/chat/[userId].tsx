@@ -33,31 +33,27 @@ import {
   Languages,
   Flag,
 } from 'lucide-react-native';
-import { MOCK_MESSAGES, MOCK_CURRENT_USER } from '@/mocks/users';
 import { Message, User } from '@/types';
 import { db } from '@/src/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
-import { trpc } from '@/lib/trpc';
 
 export default function ChatScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const { user: currentUser } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES.filter(m => m.chatId === 'chat1'));
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [showMessageMenu, setShowMessageMenu] = useState(false);
-  const [translatedMessages, setTranslatedMessages] = useState<{ [key: string]: string }>({});
   const flatListRef = useRef<FlatList>(null);
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const translateMutation = trpc.translate.useMutation();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -110,6 +106,48 @@ export default function ChatScreen() {
 
     fetchUser();
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId || !currentUser?.uid || !db) {
+      console.log('⚠️ Skipping messages listener - missing required data');
+      return;
+    }
+
+    const chatId = [currentUser.uid, userId].sort().join('_');
+    console.log('📡 Setting up messages listener for chatId:', chatId);
+
+    const messagesRef = collection(db, 'chats', chatId, 'messages');
+    const q = query(messagesRef, orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        console.log('📥 Received', snapshot.docs.length, 'messages');
+        const fetchedMessages: Message[] = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            chatId,
+            senderId: data.senderId || '',
+            content: data.content || '',
+            type: data.type || 'text',
+            imageUrl: data.imageUrl,
+            voiceDuration: data.voiceDuration,
+            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
+            isRead: data.isRead || false,
+          };
+        }).reverse();
+        setMessages(fetchedMessages);
+      },
+      (error) => {
+        console.error('❌ Error listening to messages:', error);
+      }
+    );
+
+    return () => {
+      console.log('🔌 Cleaning up messages listener');
+      unsubscribe();
+    };
+  }, [userId, currentUser?.uid]);
 
   useEffect(() => {
     if (isRecording) {
@@ -177,28 +215,43 @@ export default function ChatScreen() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputText.trim() && !selectedImage) return;
+    if (!userId || !currentUser?.uid || !db) {
+      console.error('❌ Cannot send message - missing required data');
+      return;
+    }
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      chatId: 'chat1',
-      senderId: MOCK_CURRENT_USER.id,
-      content: inputText.trim(),
-      type: selectedImage ? 'image' : 'text',
-      imageUrl: selectedImage || undefined,
-      createdAt: new Date(),
-      isRead: false,
-    };
+    const chatId = [currentUser.uid, userId].sort().join('_');
+    const messageContent = inputText.trim();
+    const messageType = selectedImage ? 'image' : 'text';
 
-    setMessages([...messages, newMessage]);
-    setInputText('');
-    setSelectedImage(null);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd();
-    }, 100);
+    console.log('📤 Sending message to chatId:', chatId);
+
+    try {
+      const messagesRef = collection(db, 'chats', chatId, 'messages');
+      await addDoc(messagesRef, {
+        senderId: currentUser.uid,
+        senderName: currentUser.name || 'Unknown',
+        content: messageContent,
+        type: messageType,
+        imageUrl: selectedImage || null,
+        createdAt: serverTimestamp(),
+        isRead: false,
+      });
+
+      console.log('✅ Message sent successfully');
+      setInputText('');
+      setSelectedImage(null);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd();
+      }, 100);
+    } catch (error) {
+      console.error('❌ Error sending message:', error);
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+    }
   };
 
   const handleStartRecording = () => {
@@ -207,20 +260,27 @@ export default function ChatScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const handleStopRecording = () => {
-    if (recordingDuration > 0) {
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        chatId: 'chat1',
-        senderId: MOCK_CURRENT_USER.id,
-        content: 'Voice message',
-        type: 'voice',
-        voiceDuration: recordingDuration,
-        createdAt: new Date(),
-        isRead: false,
-      };
-      setMessages([...messages, newMessage]);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  const handleStopRecording = async () => {
+    if (recordingDuration > 0 && userId && currentUser?.uid && db) {
+      const chatId = [currentUser.uid, userId].sort().join('_');
+      
+      try {
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
+        await addDoc(messagesRef, {
+          senderId: currentUser.uid,
+          senderName: currentUser.name || 'Unknown',
+          content: 'Voice message',
+          type: 'voice',
+          voiceDuration: recordingDuration,
+          createdAt: serverTimestamp(),
+          isRead: false,
+        });
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (error) {
+        console.error('❌ Error sending voice message:', error);
+        Alert.alert('Error', 'Failed to send voice message.');
+      }
     }
     setIsRecording(false);
     setRecordingDuration(0);
@@ -266,10 +326,18 @@ export default function ChatScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const handleDeleteMessage = () => {
-    if (selectedMessageId) {
-      setMessages(messages.filter(m => m.id !== selectedMessageId));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  const handleDeleteMessage = async () => {
+    if (selectedMessageId && userId && currentUser?.uid && db) {
+      const chatId = [currentUser.uid, userId].sort().join('_');
+      
+      try {
+        const messageRef = doc(db, 'chats', chatId, 'messages', selectedMessageId);
+        await deleteDoc(messageRef);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (error) {
+        console.error('❌ Error deleting message:', error);
+        Alert.alert('Error', 'Failed to delete message.');
+      }
     }
     setShowMessageMenu(false);
     setSelectedMessageId(null);
@@ -279,36 +347,7 @@ export default function ChatScreen() {
     if (selectedMessageId) {
       const message = messages.find(m => m.id === selectedMessageId);
       if (message && message.type === 'text') {
-        if (!currentUser?.nativeLanguage?.code) {
-          Alert.alert('Translation Error', 'Please set your native language in profile settings.');
-          setShowMessageMenu(false);
-          setSelectedMessageId(null);
-          return;
-        }
-
-        const targetLangCode = currentUser.nativeLanguage.code;
-        
-        console.log('Translating message:', message.content);
-        console.log('Target language:', targetLangCode, '-', currentUser.nativeLanguage.name);
-        
-        try {
-          const result = await translateMutation.mutateAsync({
-            text: message.content,
-            targetLang: targetLangCode,
-          });
-          
-          console.log('Translation successful:', result.translatedText);
-          
-          setTranslatedMessages(prev => ({
-            ...prev,
-            [selectedMessageId]: result.translatedText,
-          }));
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } catch (error) {
-          console.error('Translation error:', error);
-          Alert.alert('Translation Error', 'Failed to translate message. Please try again.');
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        }
+        Alert.alert('Translation', 'Translation feature will be available soon.');
       }
     }
     setShowMessageMenu(false);
@@ -337,9 +376,7 @@ export default function ChatScreen() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
-    const isOwn = item.senderId === MOCK_CURRENT_USER.id;
-    const translatedText = translatedMessages[item.id];
-    const isTranslated = !!translatedText && typeof translatedText === 'string' && translatedText.trim().length > 0;
+    const isOwn = item.senderId === currentUser?.uid;
 
     return (
       <View style={[styles.messageWrapper, isOwn ? styles.messageWrapperOwn : styles.messageWrapperOther]}>
@@ -371,19 +408,9 @@ export default function ChatScreen() {
           ) : item.type === 'image' && item.imageUrl ? (
             <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
           ) : (
-            <>
-              <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
-                {isTranslated ? translatedText : item.content}
-              </Text>
-              {isTranslated && (
-                <View style={styles.translatedBadge}>
-                  <Languages size={10} color={isOwn ? '#fff' : Colors.light.tint} />
-                  <Text style={[styles.translatedText, isOwn && styles.translatedTextOwn]}>
-                    Translated
-                  </Text>
-                </View>
-              )}
-            </>
+            <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
+              {item.content}
+            </Text>
           )}
           <Text style={[styles.messageTime, isOwn && styles.messageTimeOwn]}>
             {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
