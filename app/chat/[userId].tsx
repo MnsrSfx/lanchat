@@ -35,7 +35,7 @@ import {
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
 import { db } from '@/src/firebase';
-import { doc, getDoc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -229,6 +229,13 @@ export default function ChatScreen() {
     console.log('📤 Sending message to chatId:', chatId);
 
     try {
+      const chatDocRef = doc(db, 'chats', chatId);
+      await setDoc(chatDocRef, {
+        participants: [currentUser.uid, userId],
+        lastMessageAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
       const messagesRef = collection(db, 'chats', chatId, 'messages');
       await addDoc(messagesRef, {
         senderId: currentUser.uid,
@@ -265,6 +272,13 @@ export default function ChatScreen() {
       const chatId = [currentUser.uid, userId].sort().join('_');
       
       try {
+        const chatDocRef = doc(db, 'chats', chatId);
+        await setDoc(chatDocRef, {
+          participants: [currentUser.uid, userId],
+          lastMessageAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+
         const messagesRef = collection(db, 'chats', chatId, 'messages');
         await addDoc(messagesRef, {
           senderId: currentUser.uid,

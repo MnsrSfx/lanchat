@@ -13,7 +13,7 @@ import { router, Stack } from 'expo-router';
 import { Search, MessageCircle } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/src/firebase';
-import { collection, query, where, orderBy, getDocs, limit, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 
 interface ChatItem {
@@ -51,19 +51,21 @@ export default function ChatsScreen() {
     console.log('📡 Setting up chats listener for user:', currentUser.uid);
 
     const chatsRef = collection(db, 'chats');
-    const fetchChats = async () => {
-      try {
-        const allChatsSnapshot = await getDocs(chatsRef);
+    const chatsQuery = query(chatsRef, where('participants', 'array-contains', currentUser.uid));
+
+    const unsubscribe = onSnapshot(chatsQuery, 
+      async (snapshot) => {
+        console.log('📥 Received', snapshot.docs.length, 'chats');
         const userChats: ChatItem[] = [];
 
-        for (const chatDoc of allChatsSnapshot.docs) {
+        for (const chatDoc of snapshot.docs) {
           const chatId = chatDoc.id;
           const participants = chatId.split('_');
           
-          if (currentUser.uid && participants.includes(currentUser.uid)) {
-            const otherUserId = participants.find(id => id !== currentUser.uid);
-            if (!otherUserId || !db) continue;
+          const otherUserId = participants.find(id => id !== currentUser.uid);
+          if (!otherUserId || !db) continue;
 
+          try {
             const userDocRef = await getDocs(query(collection(db, 'users'), where('uid', '==', otherUserId), limit(1)));
             if (userDocRef.empty) continue;
 
@@ -100,24 +102,24 @@ export default function ChatsScreen() {
               unreadCount: unreadSnapshot.size,
               updatedAt: lastMessage?.createdAt || new Date(0),
             });
+          } catch (error) {
+            console.error('❌ Error processing chat:', chatId, error);
           }
         }
 
         userChats.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
         setChats(userChats);
         setLoading(false);
-      } catch (error) {
-        console.error('❌ Error fetching chats:', error);
+      },
+      (error) => {
+        console.error('❌ Error listening to chats:', error);
         setLoading(false);
       }
-    };
-
-    fetchChats();
-
-    const interval = setInterval(fetchChats, 5000);
+    );
 
     return () => {
-      clearInterval(interval);
+      console.log('🔌 Cleaning up chats listener');
+      unsubscribe();
     };
   }, [currentUser?.uid]);
 
