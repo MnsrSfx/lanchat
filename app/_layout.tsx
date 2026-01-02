@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { trpc, trpcClient } from '@/lib/trpc';
+import { trpc, getTRPCClient } from '@/lib/trpc';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -13,6 +13,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+const trpcClient = getTRPCClient();
 
 function RootLayoutNav() {
   const { isAuthenticated, isLoading, needsProfileSetup, needsEmailVerification } = useAuth();
@@ -63,13 +65,13 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <RootLayoutNav />
         </AuthProvider>
-      </trpc.Provider>
-    </QueryClientProvider>
+      </QueryClientProvider>
+    </trpc.Provider>
   );
 }
 

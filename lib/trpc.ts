@@ -17,11 +17,13 @@ const getBaseUrl = () => {
   return "http://localhost:3001";
 };
 
-export const trpcClient = trpc.createClient({
-  links: [
-    httpLink({
-      url: `${getBaseUrl()}/trpc`,
-      transformer: superjson,
-    }),
-  ],
-});
+export const getTRPCClient = () => {
+  return trpc.createClient({
+    links: [
+      httpLink({
+        url: `${getBaseUrl()}/trpc`,
+        transformer: superjson,
+      }),
+    ],
+  });
+};
