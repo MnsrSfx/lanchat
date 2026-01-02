@@ -319,6 +319,18 @@ export default function EditProfileScreen() {
           </View>
         </View>
 
+        <TouchableOpacity 
+          style={styles.saveButtonBottom} 
+          onPress={handleSave}
+          disabled={isUpdateLoading}
+        >
+          {isUpdateLoading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.saveButtonBottomText}>Save Changes</Text>
+          )}
+        </TouchableOpacity>
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </>
@@ -554,5 +566,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600' as const,
     color: Colors.light.tint,
+  },
+  saveButtonBottom: {
+    backgroundColor: Colors.light.tint,
+    marginHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+    shadowColor: Colors.light.tint,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  saveButtonBottomText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700' as const,
   },
 });
