@@ -13,7 +13,7 @@ import { router, Stack } from 'expo-router';
 import { Search, MessageCircle } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/src/firebase';
-import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 
 interface ChatItem {
@@ -66,10 +66,13 @@ export default function ChatsScreen() {
           if (!otherUserId || !db) continue;
 
           try {
-            const userDocRef = await getDocs(query(collection(db, 'users'), where('uid', '==', otherUserId), limit(1)));
-            if (userDocRef.empty) continue;
+            const userDoc = await getDoc(doc(db, 'users', otherUserId));
+            if (!userDoc.exists()) {
+              console.log('⚠️ User document not found for:', otherUserId);
+              continue;
+            }
 
-            const otherUserData = userDocRef.docs[0].data();
+            const otherUserData = userDoc.data();
             
             const messagesRef = collection(db, 'chats', chatId, 'messages');
             const lastMessageQuery = query(messagesRef, orderBy('createdAt', 'desc'), limit(1));
