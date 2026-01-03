@@ -146,6 +146,13 @@ export default function ChatsScreen() {
     return chatDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
+  const getAvatarUri = (avatarUrl: string) => {
+    if (!avatarUrl || avatarUrl.trim() === '') {
+      return 'https://ui-avatars.com/api/?name=User&size=112&background=6366f1&color=fff';
+    }
+    return avatarUrl;
+  };
+
   const renderChatItem = ({ item }: { item: ChatItem }) => {
     return (
       <TouchableOpacity
@@ -155,8 +162,10 @@ export default function ChatsScreen() {
       >
         <View style={styles.avatarContainer}>
           <Image 
-            source={{ uri: item.otherUser.avatar || 'https://via.placeholder.com/56' }} 
-            style={styles.avatar} 
+            source={{ uri: getAvatarUri(item.otherUser.avatar) }} 
+            style={styles.avatar}
+            defaultSource={{ uri: 'https://ui-avatars.com/api/?name=User&size=112&background=6366f1&color=fff' }}
+            onError={() => console.log('⚠️ Avatar failed to load for:', item.otherUser.name)}
           />
           <View style={[styles.onlineIndicator, item.otherUser.isOnline ? styles.online : styles.offline]} />
         </View>
