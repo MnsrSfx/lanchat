@@ -100,10 +100,12 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   }, [authQuery.data]);
 
   useEffect(() => {
-    if (!firebaseAuth) {
-      console.error('❌ Firebase auth not available, skipping onAuthStateChanged');
+    if (!firebaseAuth || !firebaseDb) {
+      console.error('❌ Firebase not available, skipping presence system');
       return;
     }
+    
+    let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
     
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
       if (firebaseUser) {
@@ -112,23 +114,54 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           const parsed: StoredAuth = JSON.parse(stored);
           if (parsed.user) {
             try {
-              if (!firebaseDb) {
-                console.error('❌ Firestore not available');
-                return;
-              }
-              await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), {
+              const userRef = doc(firebaseDb, 'users', firebaseUser.uid);
+              
+              await setDoc(userRef, {
                 isOnline: true,
                 lastSeen: serverTimestamp(),
               }, { merge: true });
+              
+              if (Platform.OS === 'web') {
+                heartbeatInterval = setInterval(async () => {
+                  try {
+                    await setDoc(userRef, {
+                      isOnline: true,
+                      lastSeen: serverTimestamp(),
+                    }, { merge: true });
+                  } catch (error) {
+                    console.log('Heartbeat error:', error);
+                  }
+                }, 30000);
+                
+                const handleBeforeUnload = async () => {
+                  await setDoc(userRef, {
+                    isOnline: false,
+                    lastSeen: serverTimestamp(),
+                  }, { merge: true });
+                };
+                
+                window.addEventListener('beforeunload', handleBeforeUnload);
+                
+                return () => {
+                  window.removeEventListener('beforeunload', handleBeforeUnload);
+                };
+              }
             } catch (error) {
               console.log('Error updating online status:', error);
             }
           }
         }
+      } else {
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+        }
       }
     });
 
     return () => {
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
       if (unsubscribe) {
         unsubscribe();
       }

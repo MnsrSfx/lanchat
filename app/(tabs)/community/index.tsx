@@ -96,8 +96,23 @@ export default function CommunityScreen() {
       filteredList = filteredList.filter(u => u.isOnline);
     }
 
-    return filteredList;
-  }, [users, searchQuery, selectedLanguage, showOnlineOnly]);
+    const myLearningCodes = user?.learningLanguages.map(l => l.code) || [];
+    
+    return filteredList.sort((a, b) => {
+      if (a.isOnline !== b.isOnline) {
+        return a.isOnline ? -1 : 1;
+      }
+      
+      const aMatchesMyLearning = myLearningCodes.includes(a.nativeLanguage.code);
+      const bMatchesMyLearning = myLearningCodes.includes(b.nativeLanguage.code);
+      
+      if (aMatchesMyLearning !== bMatchesMyLearning) {
+        return aMatchesMyLearning ? -1 : 1;
+      }
+      
+      return 0;
+    });
+  }, [users, searchQuery, selectedLanguage, showOnlineOnly, user?.learningLanguages]);
 
   const nativeSpeakers = useMemo(() => {
     const learningLanguages = user?.learningLanguages || [];

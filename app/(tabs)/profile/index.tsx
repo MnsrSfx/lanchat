@@ -21,12 +21,14 @@ import {
   Lock,
 } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotifications } from '@/contexts/NotificationContext';
 import Colors from '@/constants/colors';
 import PhotoGalleryModal from '@/components/PhotoGalleryModal';
 
 export default function ProfileScreen() {
   const { user, logout, updateProfile } = useAuth();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(user?.notificationsEnabled ?? true);
+  const { hasPermission, isSupported, requestPermission } = useNotifications();
+  const [notificationsEnabled, setNotificationsEnabled] = useState(hasPermission);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
 
@@ -43,20 +45,26 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleToggleNotifications = (value: boolean) => {
-    setNotificationsEnabled(value);
-    updateProfile({ notificationsEnabled: value });
+  const handleToggleNotifications = async (value: boolean) => {
+    if (value && !hasPermission) {
+      await requestPermission();
+      setNotificationsEnabled(hasPermission);
+    } else {
+      setNotificationsEnabled(value);
+      updateProfile({ notificationsEnabled: value });
+    }
   };
 
   const menuItems = [
     { 
       icon: <Bell size={20} color={Colors.light.tint} />, 
       title: 'Notifications', 
-      subtitle: 'Manage notification preferences',
+      subtitle: isSupported ? (hasPermission ? 'Enabled' : 'Enable to receive alerts') : 'Not available on this browser',
       onPress: () => {},
       hasSwitch: true,
       switchValue: notificationsEnabled,
       onSwitchChange: handleToggleNotifications,
+      disabled: !isSupported,
     },
     { 
       icon: <Lock size={20} color={Colors.light.tint} />, 
@@ -186,9 +194,9 @@ export default function ProfileScreen() {
         {menuItems.map((item, index) => (
           <TouchableOpacity
             key={index}
-            style={styles.menuItem}
+            style={[styles.menuItem, item.disabled && styles.menuItemDisabled]}
             onPress={item.onPress}
-            disabled={item.hasSwitch}
+            disabled={item.hasSwitch || item.disabled}
           >
             <View style={styles.menuIcon}>{item.icon}</View>
             <View style={styles.menuContent}>
@@ -201,6 +209,7 @@ export default function ProfileScreen() {
                 onValueChange={item.onSwitchChange}
                 trackColor={{ false: Colors.light.border, true: Colors.light.tint }}
                 thumbColor="#fff"
+                disabled={item.disabled}
               />
             ) : (
               <ChevronRight size={20} color={Colors.light.textSecondary} />
@@ -395,6 +404,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.borderLight,
+  },
+  menuItemDisabled: {
+    opacity: 0.5,
   },
   menuIcon: {
     width: 40,
