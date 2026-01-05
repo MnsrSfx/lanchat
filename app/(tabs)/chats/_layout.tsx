@@ -1,4 +1,6 @@
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
+import { TouchableOpacity } from 'react-native';
+import { ChevronLeft } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 
 export default function ChatsLayout() {
@@ -12,7 +14,20 @@ export default function ChatsLayout() {
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Chats' }} />
+      <Stack.Screen 
+        name="index" 
+        options={{ 
+          title: 'Chats',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => router.canGoBack() ? router.back() : null}
+              style={{ marginLeft: 8 }}
+            >
+              <ChevronLeft size={24} color={Colors.light.text} />
+            </TouchableOpacity>
+          ),
+        }} 
+      />
     </Stack>
   );
 }
