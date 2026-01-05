@@ -132,6 +132,14 @@ export default function CommunityScreen() {
     router.push(`/(tabs)/community/user/${userId}`);
   };
 
+  const getAvatarUri = (avatarUrl: string, name: string) => {
+    if (!avatarUrl || avatarUrl.trim() === '' || avatarUrl.startsWith('blob:')) {
+      const displayName = name || 'User';
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&size=112&background=6366f1&color=fff`;
+    }
+    return avatarUrl;
+  };
+
   const renderUserCard = ({ item }: { item: User }) => (
     <TouchableOpacity 
       style={styles.userCard}
@@ -139,7 +147,11 @@ export default function CommunityScreen() {
       activeOpacity={0.7}
     >
       <View style={styles.avatarContainer}>
-        <Image source={{ uri: item.avatar }} style={styles.avatar} />
+        <Image 
+          source={{ uri: getAvatarUri(item.avatar, item.name) }} 
+          style={styles.avatar}
+          defaultSource={{ uri: getAvatarUri('', item.name) }}
+        />
         <View style={[styles.onlineIndicator, item.isOnline ? styles.online : styles.offline]} />
       </View>
       
@@ -195,7 +207,11 @@ export default function CommunityScreen() {
                 onPress={() => handleUserPress(item.id)}
               >
                 <View style={styles.nativeAvatarContainer}>
-                  <Image source={{ uri: item.avatar }} style={styles.nativeAvatar} />
+                  <Image 
+                    source={{ uri: getAvatarUri(item.avatar, item.name) }} 
+                    style={styles.nativeAvatar}
+                    defaultSource={{ uri: getAvatarUri('', item.name) }}
+                  />
                   <View style={[styles.nativeOnlineIndicator, item.isOnline ? styles.online : styles.offline]} />
                 </View>
                 <Text style={styles.nativeName} numberOfLines={1}>{item.name}</Text>
