@@ -5,13 +5,13 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Image,
   TextInput,
   ActivityIndicator,
 } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { Search, MessageCircle } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import Avatar from '@/components/Avatar';
 import { db } from '@/src/firebase';
 import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
@@ -146,13 +146,6 @@ export default function ChatsScreen() {
     return chatDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
-  const getAvatarUri = (avatarUrl: string) => {
-    if (!avatarUrl || avatarUrl.trim() === '') {
-      return 'https://ui-avatars.com/api/?name=User&size=112&background=6366f1&color=fff';
-    }
-    return avatarUrl;
-  };
-
   const renderChatItem = ({ item }: { item: ChatItem }) => {
     return (
       <TouchableOpacity
@@ -161,11 +154,10 @@ export default function ChatsScreen() {
         activeOpacity={0.7}
       >
         <View style={styles.avatarContainer}>
-          <Image 
-            source={{ uri: getAvatarUri(item.otherUser.avatar) }} 
-            style={styles.avatar}
-            defaultSource={{ uri: 'https://ui-avatars.com/api/?name=User&size=112&background=6366f1&color=fff' }}
-            onError={() => console.log('⚠️ Avatar failed to load for:', item.otherUser.name)}
+          <Avatar
+            uri={item.otherUser.avatar}
+            name={item.otherUser.name}
+            size={56}
           />
           <View style={[styles.onlineIndicator, item.otherUser.isOnline ? styles.online : styles.offline]} />
         </View>

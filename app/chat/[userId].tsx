@@ -15,6 +15,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import Avatar from '@/components/Avatar';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -444,7 +445,7 @@ export default function ChatScreen() {
               style={styles.headerTitle}
               onPress={() => router.push(`/(tabs)/(community)/user/${user.id}` as any)}
             >
-              <Image source={{ uri: user.avatar }} style={styles.headerAvatar} />
+              <Avatar uri={user.avatar} name={user.name} size={36} />
               <View>
                 <Text style={styles.headerName}>{user.name}</Text>
                 <Text style={styles.headerStatus}>

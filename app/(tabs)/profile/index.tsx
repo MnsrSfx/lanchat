@@ -10,6 +10,7 @@ import {
   Switch,
 } from 'react-native';
 import { router, Stack } from 'expo-router';
+import Avatar from '@/components/Avatar';
 import { 
   Edit, 
   Shield, 
@@ -108,15 +109,7 @@ export default function ProfileScreen() {
           }}
           activeOpacity={0.8}
         >
-          {user?.avatar ? (
-            <Image source={{ uri: user.avatar }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarInitial}>
-                {user?.name?.charAt(0).toUpperCase() || '?'}
-              </Text>
-            </View>
-          )}
+          <Avatar uri={user?.avatar} name={user?.name || 'User'} size={100} />
           <View style={styles.onlineIndicator} />
         </TouchableOpacity>
 

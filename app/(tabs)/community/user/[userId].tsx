@@ -11,6 +11,7 @@ import {
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { MapPin, MessageCircle, Phone, Video, Shield, Clock } from 'lucide-react-native';
 import Colors from '@/constants/colors';
+import Avatar from '@/components/Avatar';
 import PhotoGalleryModal from '@/components/PhotoGalleryModal';
 import { db } from '@/src/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -93,14 +94,6 @@ export default function UserProfileScreen() {
     return `${days}d ago`;
   };
 
-  const getAvatarUri = (avatarUrl: string, name: string) => {
-    if (!avatarUrl || avatarUrl.trim() === '' || avatarUrl.startsWith('blob:')) {
-      const displayName = name || 'User';
-      return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&size=256&background=6366f1&color=fff`;
-    }
-    return avatarUrl;
-  };
-
   return (
     <>
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -117,11 +110,7 @@ export default function UserProfileScreen() {
           }}
           activeOpacity={0.8}
         >
-          <Image 
-            source={{ uri: getAvatarUri(user.avatar, user.name) }} 
-            style={styles.avatar}
-            defaultSource={{ uri: getAvatarUri('', user.name) }}
-          />
+          <Avatar uri={user.avatar} name={user.name} size={120} />
           <View style={[styles.onlineIndicator, user.isOnline ? styles.online : styles.offline]} />
         </TouchableOpacity>
 
@@ -142,9 +131,8 @@ export default function UserProfileScreen() {
                 activeOpacity={0.8}
               >
                 <Image 
-                  source={{ uri: getAvatarUri(photo, user.name) }} 
+                  source={{ uri: photo }} 
                   style={styles.photoStripItem}
-                  defaultSource={{ uri: getAvatarUri('', user.name) }}
                 />
               </TouchableOpacity>
             ))}
