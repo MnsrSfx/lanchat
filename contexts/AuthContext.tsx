@@ -4,7 +4,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { User, AuthState } from '@/types';
 import { MOCK_CURRENT_USER } from '@/mocks/users';
-import { auth, db } from '@/src/firebase';
+import { auth, db, storage } from '@/src/firebase';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import { 
@@ -20,6 +20,7 @@ import {
   sendPasswordResetEmail
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Platform } from 'react-native';
 
 const AUTH_STORAGE_KEY = 'lanchat_auth';
@@ -434,26 +435,79 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     },
   });
 
+  const uploadImage = async (uri: string, userId: string, index: number): Promise<string> => {
+    if (!storage) {
+      throw new Error('Firebase Storage not initialized');
+    }
+    
+    console.log('Uploading image:', uri);
+    
+    let blob: Blob;
+    if (Platform.OS === 'web') {
+      const response = await fetch(uri);
+      blob = await response.blob();
+    } else {
+      const response = await fetch(uri);
+      blob = await response.blob();
+    }
+    
+    const filename = `profile_${userId}_${index}_${Date.now()}.jpg`;
+    const storageRef = ref(storage, `profile-photos/${userId}/${filename}`);
+    
+    console.log('Uploading to:', storageRef.fullPath);
+    await uploadBytes(storageRef, blob);
+    
+    const downloadURL = await getDownloadURL(storageRef);
+    console.log('Upload successful, URL:', downloadURL);
+    
+    return downloadURL;
+  };
+
   const updateProfileMutation = useMutation({
     mutationFn: async (updates: Partial<User>) => {
       const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
         const parsed: StoredAuth = JSON.parse(stored);
         if (parsed.user && parsed.user.uid) {
-          parsed.user = { ...parsed.user, ...updates };
+          let processedUpdates = { ...updates };
+          
+          if (updates.photos && updates.photos.length > 0) {
+            console.log('Processing photos for upload...');
+            const uploadedPhotos: string[] = [];
+            
+            for (let i = 0; i < updates.photos.length; i++) {
+              const photoUri = updates.photos[i];
+              if (photoUri.startsWith('http://') || photoUri.startsWith('https://')) {
+                uploadedPhotos.push(photoUri);
+              } else {
+                try {
+                  const downloadURL = await uploadImage(photoUri, parsed.user.uid, i);
+                  uploadedPhotos.push(downloadURL);
+                } catch (error) {
+                  console.error('Error uploading photo:', error);
+                  throw new Error('Failed to upload photo. Please try again.');
+                }
+              }
+            }
+            
+            processedUpdates.photos = uploadedPhotos;
+            processedUpdates.avatar = uploadedPhotos[0] || '';
+          }
+          
+          parsed.user = { ...parsed.user, ...processedUpdates };
           parsed.needsProfileSetup = false;
 
           try {
             const updateData: Record<string, any> = {};
-            if (updates.name) updateData.displayName = updates.name;
-            if (updates.avatar !== undefined) updateData.photoURL = updates.avatar;
-            if (updates.bio !== undefined) updateData.bio = updates.bio;
-            if (updates.nativeLanguage) updateData.nativeLanguage = updates.nativeLanguage;
-            if (updates.learningLanguages) updateData.learningLanguages = updates.learningLanguages;
-            if (updates.country !== undefined) updateData.country = updates.country;
-            if (updates.city !== undefined) updateData.city = updates.city;
-            if (updates.age !== undefined) updateData.age = updates.age;
-            if (updates.photos) updateData.photos = updates.photos;
+            if (processedUpdates.name) updateData.displayName = processedUpdates.name;
+            if (processedUpdates.avatar !== undefined) updateData.photoURL = processedUpdates.avatar;
+            if (processedUpdates.bio !== undefined) updateData.bio = processedUpdates.bio;
+            if (processedUpdates.nativeLanguage) updateData.nativeLanguage = processedUpdates.nativeLanguage;
+            if (processedUpdates.learningLanguages) updateData.learningLanguages = processedUpdates.learningLanguages;
+            if (processedUpdates.country !== undefined) updateData.country = processedUpdates.country;
+            if (processedUpdates.city !== undefined) updateData.city = processedUpdates.city;
+            if (processedUpdates.age !== undefined) updateData.age = processedUpdates.age;
+            if (processedUpdates.photos) updateData.photos = processedUpdates.photos;
             
             if (Object.keys(updateData).length > 0 && firebaseDb) {
               // @ts-expect-error - Firestore type issue with dynamic object
