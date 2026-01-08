@@ -436,31 +436,71 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   });
 
   const uploadImage = async (uri: string, userId: string, index: number): Promise<string> => {
-    if (!storage) {
-      throw new Error('Firebase Storage not initialized');
+    try {
+      console.log('🔄 Starting image upload:', uri);
+      console.log('Storage status:', storage ? '✅ Available' : '❌ Not available');
+      
+      if (!storage) {
+        throw new Error('Firebase Storage not initialized. Please refresh the page.');
+      }
+      
+      let blob: Blob;
+      
+      if (Platform.OS === 'web') {
+        console.log('Web platform detected, fetching blob...');
+        try {
+          const response = await fetch(uri);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.statusText}`);
+          }
+          blob = await response.blob();
+          console.log('Blob created successfully, size:', blob.size, 'type:', blob.type);
+        } catch (fetchError: any) {
+          console.error('Fetch error:', fetchError);
+          throw new Error('Failed to process image. Please try again.');
+        }
+      } else {
+        console.log('Native platform detected, fetching blob...');
+        const response = await fetch(uri);
+        blob = await response.blob();
+      }
+      
+      if (!blob || blob.size === 0) {
+        throw new Error('Invalid image data');
+      }
+      
+      const filename = `profile_${userId}_${index}_${Date.now()}.jpg`;
+      const storagePath = `profile-photos/${userId}/${filename}`;
+      
+      console.log('Creating storage reference:', storagePath);
+      const storageRef = ref(storage, storagePath);
+      
+      console.log('Uploading to storage...');
+      const uploadResult = await uploadBytes(storageRef, blob, {
+        contentType: blob.type || 'image/jpeg',
+      });
+      
+      console.log('Upload successful, getting download URL...');
+      const downloadURL = await getDownloadURL(uploadResult.ref);
+      console.log('✅ Upload complete, URL:', downloadURL);
+      
+      return downloadURL;
+    } catch (error: any) {
+      console.error('❌ Upload image error:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      
+      if (error.code === 'storage/unauthorized') {
+        throw new Error('Permission denied. Please check Firebase Storage rules.');
+      } else if (error.code === 'storage/canceled') {
+        throw new Error('Upload was cancelled.');
+      } else if (error.code === 'storage/unknown') {
+        throw new Error('Upload failed. Please check your internet connection.');
+      }
+      
+      throw error;
     }
-    
-    console.log('Uploading image:', uri);
-    
-    let blob: Blob;
-    if (Platform.OS === 'web') {
-      const response = await fetch(uri);
-      blob = await response.blob();
-    } else {
-      const response = await fetch(uri);
-      blob = await response.blob();
-    }
-    
-    const filename = `profile_${userId}_${index}_${Date.now()}.jpg`;
-    const storageRef = ref(storage, `profile-photos/${userId}/${filename}`);
-    
-    console.log('Uploading to:', storageRef.fullPath);
-    await uploadBytes(storageRef, blob);
-    
-    const downloadURL = await getDownloadURL(storageRef);
-    console.log('Upload successful, URL:', downloadURL);
-    
-    return downloadURL;
   };
 
   const updateProfileMutation = useMutation({
