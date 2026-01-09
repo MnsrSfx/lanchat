@@ -24,10 +24,15 @@ try {
     hasApiKey: !!firebaseConfig.apiKey,
     hasAuthDomain: !!firebaseConfig.authDomain,
     hasProjectId: !!firebaseConfig.projectId,
+    hasStorageBucket: !!firebaseConfig.storageBucket,
   });
   
   if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
     throw new Error('Missing Firebase configuration. Please check environment variables.');
+  }
+  
+  if (!firebaseConfig.storageBucket) {
+    console.warn('⚠️ Storage bucket not configured, storage features will not work');
   }
   
   app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -35,7 +40,15 @@ try {
   
   auth = getAuth(app);
   db = getFirestore(app);
-  storage = getStorage(app);
+  
+  if (firebaseConfig.storageBucket) {
+    try {
+      storage = getStorage(app);
+      console.log('✅ Firebase Storage initialized:', storage.app.options.storageBucket);
+    } catch (storageError) {
+      console.error('❌ Firebase Storage initialization failed:', storageError);
+    }
+  }
   
   if (!auth) {
     throw new Error('Failed to initialize Firebase Auth');
@@ -43,11 +56,8 @@ try {
   if (!db) {
     throw new Error('Failed to initialize Firestore');
   }
-  if (!storage) {
-    throw new Error('Failed to initialize Firebase Storage');
-  }
   
-  console.log('✅ Firebase auth, db, and storage initialized successfully');
+  console.log('✅ Firebase auth and db initialized successfully');
 } catch (error) {
   console.error('❌ Firebase initialization error:', error);
   console.error('Make sure EXPO_PUBLIC_FIREBASE_* environment variables are set');

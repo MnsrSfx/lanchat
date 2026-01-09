@@ -439,14 +439,11 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     try {
       console.log('🔄 Starting image upload:', uri);
       console.log('Storage status:', storage ? '✅ Available' : '❌ Not available');
-      console.log('Storage object:', storage);
       
-      if (!storage || typeof storage !== 'object') {
-        console.error('Storage initialization failed. Storage value:', storage);
+      if (!storage) {
+        console.error('❌ Storage is not initialized');
         throw new Error('Firebase Storage is not available. Please check your Firebase configuration and refresh the page.');
       }
-      
-      const firebaseStorage = storage;
       
       let blob: Blob;
       
@@ -477,7 +474,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       const storagePath = `profile-photos/${userId}/${filename}`;
       
       console.log('Creating storage reference:', storagePath);
-      const storageRef = ref(firebaseStorage, storagePath);
+      const storageRef = ref(storage, storagePath);
       
       console.log('Uploading to storage...');
       const uploadResult = await uploadBytes(storageRef, blob, {
