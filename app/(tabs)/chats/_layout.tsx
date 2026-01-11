@@ -1,33 +1,45 @@
-import { Stack, router } from 'expo-router';
-import { TouchableOpacity } from 'react-native';
-import { ChevronLeft } from 'lucide-react-native';
+import { Tabs } from 'expo-router';
+import { MessageSquare, User, Settings } from 'lucide-react-native'; // ikonlar için, yoksa kendi ikonlarını kullan
 import Colors from '@/constants/colors';
 
-export default function ChatsLayout() {
+export default function TabsLayout() {
   return (
-    <Stack
+    <Tabs
       screenOptions={{
-        headerStyle: {
-          backgroundColor: Colors.light.background,
-        },
-        headerTintColor: Colors.light.text,
-        headerShadowVisible: false,
+        tabBarActiveTintColor: Colors.light.tint,
+        tabBarInactiveTintColor: Colors.light.textSecondary,
+        tabBarStyle: { backgroundColor: Colors.light.background },
+        headerShown: false, // header'ı ekranlarda yöneteceğiz
       }}
     >
-      <Stack.Screen 
-        name="index" 
-        options={{ 
+      {/* Chats tab'ı - ilk sırada, default olarak açılsın */}
+      <Tabs.Screen
+        name="chats"
+        options={{
           title: 'Chats',
-          headerLeft: () => (
-            <TouchableOpacity 
-              onPress={() => router.canGoBack() ? router.back() : null}
-              style={{ marginLeft: 8 }}
-            >
-              <ChevronLeft size={24} color={Colors.light.text} />
-            </TouchableOpacity>
+          tabBarIcon: ({ color, size }) => (
+            <MessageSquare size={size} color={color} />
           ),
-        }} 
+          href: '/chats', // URL'yi /chats olarak zorla (manuel girilince de çalışsın)
+        }}
       />
-    </Stack>
+
+      {/* Diğer tab'lar (profil, ayarlar vs.) */}
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
+        }}
+      />
+
+      <Tabs.Screen
+        name="settings" // varsa ekle, yoksa bu satırı sil
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => <Settings size={size} color={color} />,
+        }}
+      />
+    </Tabs>
   );
 }
