@@ -1,229 +1,57 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Image,
-  TextInput,
-  ActivityIndicator,
-} from 'react-native';
+import React from 'react';
+import { View, Text, TouchableOpacity, Image, FlatList, TextInput, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Search, MessageCircle, Phone, Video } from 'lucide-react-native';
-import { useAuth } from '@/contexts/AuthContext';
-import { db } from '@/src/firebase';
-import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { ArrowLeft, Phone, Video, Send } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 
-interface ChatItem {
-  id: string;
-  otherUser: {
-    id: string;
-    name: string;
-    avatar: string;
-    isOnline: boolean;
-  };
-  lastMessage?: {
-    content: string;
-    senderId: string;
-    type: string;
-    createdAt: Date;
-    voiceDuration?: number;
-  };
-  unreadCount: number;
-  updatedAt: Date;
-}
+// Örnek mesajlar (senin Firebase'den çektiğin kısma uyarla)
+const dummyMessages = [
+  { id: '1', text: 'Hey', sentByMe: false, time: '01:29' },
+  { id: '2', text: 'Nasılsın?', sentByMe: true, time: '01:30' },
+  // ... gerçek mesajlarını ekle
+];
 
-export default function ChatsScreen() {
-  const { user: currentUser } = useAuth();
-  const { otherUserId, otherUserName = 'Sohbet', otherUserPhoto } = useLocalSearchParams(); // Chat'ten gelirse params alır
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [chats, setChats] = useState<ChatItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!currentUser?.uid || !db) {
-      console.log('⚠️ No current user or db, skipping chats listener');
-      setLoading(false);
-      return;
-    }
-
-    console.log('📡 Setting up chats listener for user:', currentUser.uid);
-
-    const chatsRef = collection(db, 'chats');
-    const chatsQuery = query(chatsRef, where('participants', 'array-contains', currentUser.uid));
-
-    const unsubscribe = onSnapshot(chatsQuery, 
-      async (snapshot) => {
-        console.log('📥 Received', snapshot.docs.length, 'chats');
-        const userChats: ChatItem[] = [];
-
-        for (const chatDoc of snapshot.docs) {
-          const chatId = chatDoc.id;
-          const participants = chatId.split('_');
-          
-          const otherUserId = participants.find(id => id !== currentUser.uid);
-          if (!otherUserId || !db) continue;
-
-          try {
-            const userDoc = await getDoc(doc(db, 'users', otherUserId));
-            if (!userDoc.exists()) continue;
-
-            const otherUserData = userDoc.data();
-            
-            const messagesRef = collection(db, 'chats', chatId, 'messages');
-            const lastMessageQuery = query(messagesRef, orderBy('createdAt', 'desc'), limit(1));
-            const messagesSnapshot = await getDocs(lastMessageQuery);
-
-            let lastMessage;
-            if (!messagesSnapshot.empty) {
-              const lastMsg = messagesSnapshot.docs[0].data();
-              lastMessage = {
-                content: lastMsg.content || '',
-                senderId: lastMsg.senderId || '',
-                type: lastMsg.type || 'text',
-                createdAt: lastMsg.createdAt instanceof Timestamp ? lastMsg.createdAt.toDate() : new Date(),
-                voiceDuration: lastMsg.voiceDuration,
-              };
-            }
-
-            const unreadQuery = query(messagesRef, where('isRead', '==', false), where('senderId', '!=', currentUser.uid));
-            const unreadSnapshot = await getDocs(unreadQuery);
-
-            userChats.push({
-              id: chatId,
-              otherUser: {
-                id: otherUserId,
-                name: otherUserData.displayName || 'Bilinmeyen Kullanıcı',
-                avatar: otherUserData.photoURL || '',
-                isOnline: otherUserData.isOnline || false,
-              },
-              lastMessage,
-              unreadCount: unreadSnapshot.size,
-              updatedAt: lastMessage?.createdAt || new Date(0),
-            });
-          } catch (error) {
-            console.error('❌ Error processing chat:', chatId, error);
-          }
-        }
-
-        userChats.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-        setChats(userChats);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('❌ Error listening to chats:', error);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [currentUser?.uid]);
-
-  const filteredChats = chats.filter(chat => 
-    chat.otherUser.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const formatTime = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / 86400000);
-
-    if (days === 0) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (days === 1) return 'Dün';
-    if (days < 7) return date.toLocaleDateString([], { weekday: 'short' });
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  };
-
-  const getAvatarUri = (avatarUrl: string) => {
-    if (!avatarUrl || avatarUrl.trim() === '') {
-      return 'https://ui-avatars.com/api/?name=User&size=112&background=6366f1&color=fff';
-    }
-    return avatarUrl;
-  };
+export default function ChatScreen() {
+  const { id, name = 'Novi Yulianti', photo } = useLocalSearchParams(); // chat'e giderken params geçtiğin yerden alır
 
   const handleBack = () => router.back();
 
-  const renderChatItem = ({ item }: { item: ChatItem }) => (
-    <TouchableOpacity
-      style={styles.chatItem}
-      onPress={() => router.push({
-        pathname: '/chat/[id]',
-        params: { id: item.otherUser.id }
-      })}
-      activeOpacity={0.7}
-    >
-      <View style={styles.avatarContainer}>
-        <Image 
-          source={{ uri: getAvatarUri(item.otherUser.avatar) }} 
-          style={styles.avatar}
-          defaultSource={{ uri: 'https://ui-avatars.com/api/?name=User&size=112&background=6366f1&color=fff' }}
-          onError={() => console.log('⚠️ Avatar failed to load for:', item.otherUser.name)}
-        />
-        <View style={[styles.onlineIndicator, item.otherUser.isOnline ? styles.online : styles.offline]} />
-      </View>
-
-      <View style={styles.chatContent}>
-        <View style={styles.chatHeader}>
-          <Text style={styles.userName}>{item.otherUser.name}</Text>
-          <Text style={[styles.time, item.unreadCount > 0 && styles.timeUnread]}>
-            {formatTime(item.updatedAt)}
-          </Text>
-        </View>
-
-        <View style={styles.messageRow}>
-          {item.lastMessage?.type === 'voice' ? (
-            <View style={styles.voiceMessage}>
-              <MessageCircle size={14} color={Colors.light.textSecondary} />
-              <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}>
-                Sesli mesaj ({item.lastMessage.voiceDuration}s)
-              </Text>
-            </View>
-          ) : (
-            <Text 
-              style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}
-              numberOfLines={1}
-            >
-              {item.lastMessage?.senderId === currentUser?.uid ? 'Sen: ' : ''}
-              {item.lastMessage?.content || 'Henüz mesaj yok'}
-            </Text>
-          )}
-          {item.unreadCount > 0 && (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadCount}>{item.unreadCount}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
+  const renderMessage = ({ item }) => (
+    <View style={[
+      styles.messageBubble,
+      item.sentByMe ? styles.myMessage : styles.theirMessage
+    ]}>
+      <Text style={styles.messageText}>{item.text}</Text>
+      <Text style={styles.messageTime}>{item.time}</Text>
+    </View>
   );
 
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color={Colors.light.tint} />
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      {/* Custom Header - Sol geri butonu görünür olacak */}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      {/* Custom Header - Sol geri butonu GÖRÜNÜR olacak */}
       <View style={styles.header}>
+        {/* Sol üst: Geri Butonu */}
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <ArrowLeft size={28} color={Colors.light.text} />
         </TouchableOpacity>
 
+        {/* Orta: Profil resmi + İsim */}
         <View style={styles.headerCenter}>
           <Image
-            source={{ uri: otherUserPhoto || getAvatarUri('') }}
+            source={{ uri: photo || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(name) + '&size=112&background=6366f1&color=fff' }}
             style={styles.headerAvatar}
           />
-          <Text style={styles.headerTitle}>{otherUserName}</Text>
+          <View>
+            <Text style={styles.headerTitle}>{name}</Text>
+            <Text style={styles.headerSubtitle}>Online</Text>
+          </View>
         </View>
 
+        {/* Sağ: Arama ikonları */}
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.iconButton}>
             <Phone size={24} color={Colors.light.tint} />
@@ -234,227 +62,77 @@ export default function ChatsScreen() {
         </View>
       </View>
 
-      {/* Arama barı */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <Search size={20} color={Colors.light.textSecondary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Konuşmaları ara..."
-            placeholderTextColor={Colors.light.textSecondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-      </View>
-
-      {/* Mesaj listesi */}
+      {/* Mesaj Listesi */}
       <FlatList
-        data={filteredChats}
-        renderItem={renderChatItem}
+        data={dummyMessages}
+        renderItem={renderMessage}
         keyExtractor={item => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>Henüz konuşma yok</Text>
-            <Text style={styles.emptyText}>Dil partnerleriyle sohbet etmeye başla</Text>
-            <TouchableOpacity 
-              style={styles.findButton}
-              onPress={() => router.push('/(tabs)/community')}
-            >
-              <Text style={styles.findButtonText}>Partner Bul</Text>
-            </TouchableOpacity>
-          </View>
-        }
+        inverted
+        contentContainerStyle={styles.messagesList}
       />
-    </View>
+
+      {/* Mesaj Yazma Alanı */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Mesaj yaz..."
+          placeholderTextColor={Colors.light.textSecondary}
+        />
+        <TouchableOpacity style={styles.sendButton}>
+          <Send size={24} color={Colors.light.tint} />
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.light.background,
-  },
+  container: { flex: 1, backgroundColor: Colors.light.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 50, // Status bar/notch için
+    paddingTop: 50,
     paddingBottom: 12,
     backgroundColor: Colors.light.background,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.borderLight,
   },
-  backButton: {
-    padding: 8,
+  backButton: { padding: 8 },
+  headerCenter: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center' },
+  headerAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12 },
+  headerTitle: { fontSize: 18, fontWeight: '600', color: Colors.light.text },
+  headerSubtitle: { fontSize: 12, color: 'green' },
+  headerRight: { flexDirection: 'row' },
+  iconButton: { padding: 8, marginLeft: 8 },
+  messagesList: { padding: 16 },
+  messageBubble: {
+    maxWidth: '70%',
+    marginVertical: 6,
+    padding: 12,
+    borderRadius: 18,
   },
-  headerCenter: {
+  myMessage: { alignSelf: 'flex-end', backgroundColor: Colors.light.tint, borderTopRightRadius: 0 },
+  theirMessage: { alignSelf: 'flex-start', backgroundColor: Colors.light.surface, borderTopLeftRadius: 0 },
+  messageText: { color: Colors.light.text, fontSize: 16 },
+  messageTime: { fontSize: 10, color: Colors.light.textSecondary, alignSelf: 'flex-end', marginTop: 4 },
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-  },
-  headerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 12,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.light.text,
-  },
-  headerRight: {
-    flexDirection: 'row',
-  },
-  iconButton: {
-    padding: 8,
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    padding: 12,
     backgroundColor: Colors.light.surface,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 44,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.borderLight,
   },
-  searchInput: {
+  input: {
     flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
-    color: Colors.light.text,
-  },
-  listContent: {
-    paddingBottom: 100,
-  },
-  chatItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.light.borderLight,
-  },
-  avatarContainer: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: Colors.light.background,
-  },
-  online: {
-    backgroundColor: Colors.light.online,
-  },
-  offline: {
-    backgroundColor: Colors.light.offline,
-  },
-  chatContent: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  chatHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.light.text,
-  },
-  time: {
-    fontSize: 12,
-    color: Colors.light.textSecondary,
-  },
-  timeUnread: {
-    color: Colors.light.tint,
-    fontWeight: '600',
-  },
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  voiceMessage: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  lastMessage: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-    marginRight: 8,
-  },
-  lastMessageUnread: {
-    color: Colors.light.text,
-    fontWeight: '500',
-  },
-  unreadBadge: {
-    backgroundColor: Colors.light.tint,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  unreadCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 80,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.light.text,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-    marginTop: 4,
-    marginBottom: 20,
-  },
-  findButton: {
-    backgroundColor: Colors.light.tint,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    backgroundColor: Colors.light.background,
     borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginRight: 8,
+    fontSize: 16,
   },
-  findButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    flex: 1,
-  },
+  sendButton: { padding: 8 },
 });
