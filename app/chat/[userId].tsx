@@ -15,7 +15,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -32,7 +32,6 @@ import {
   Trash2,
   Languages,
   Flag,
-  ArrowLeft,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
 import { db } from '@/src/firebase';
@@ -60,8 +59,7 @@ export default function ChatScreen() {
     const fetchUser = async () => {
       if (!userId) {
         console.error('❌ No userId provided to chat screen');
-        Alert.alert('Hata', 'Kullanıcı ID bulunamadı.');
-        router.back();
+        setLoading(false);
         return;
       }
       
@@ -82,7 +80,7 @@ export default function ChatScreen() {
             id: userDoc.id,
             uid: data.uid,
             email: data.email || '',
-            name: data.displayName || data.email?.split('@')[0] || 'Bilinmeyen Kullanıcı',
+            name: data.displayName || data.email?.split('@')[0] || 'Unknown User',
             avatar: data.photoURL || '',
             photos: data.photos || [],
             bio: data.bio || '',
@@ -98,12 +96,9 @@ export default function ChatScreen() {
           });
         } else {
           console.error('❌ User document not found for userId:', userId);
-          Alert.alert('Hata', 'Kullanıcı bulunamadı.');
-          router.back();
         }
       } catch (error) {
         console.error('❌ Error fetching user:', error);
-        Alert.alert('Hata', 'Kullanıcı yüklenemedi.');
       } finally {
         setLoading(false);
       }
@@ -142,14 +137,16 @@ export default function ChatScreen() {
           };
         }).reverse();
         setMessages(fetchedMessages);
-        flatListRef.current?.scrollToEnd({ animated: true });
       },
       (error) => {
         console.error('❌ Error listening to messages:', error);
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      console.log('🔌 Cleaning up messages listener');
+      unsubscribe();
+    };
   }, [userId, currentUser?.uid]);
 
   useEffect(() => {
@@ -187,19 +184,10 @@ export default function ChatScreen() {
     };
   }, [isRecording, recordingAnimation]);
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleBack = () => router.back();
-
   if (loading) {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={Colors.light.tint} />
-        <Text style={{ marginTop: 10, color: Colors.light.text }}>Yükleniyor...</Text>
       </View>
     );
   }
@@ -207,60 +195,282 @@ export default function ChatScreen() {
   if (!user) {
     return (
       <View style={[styles.container, styles.centerContent]}>
-        <Text style={styles.errorText}>Kullanıcı bulunamadı</Text>
+        <Text style={styles.errorText}>User not found</Text>
+        <Text style={[styles.errorText, { fontSize: 14, marginTop: 8 }]}>
+          {userId ? `User ID: ${userId}` : 'No user ID provided'}
+        </Text>
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={handleBack}
+          onPress={() => router.back()}
         >
-          <Text style={styles.backButtonText}>Geri Dön</Text>
+          <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // Custom Header - Sol geri butonu GÖRÜNÜR
-  const renderHeader = () => (
-    <View style={styles.customHeader}>
-      <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-        <ArrowLeft size={28} color={Colors.light.text} />
-      </TouchableOpacity>
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
-      <TouchableOpacity 
-        style={styles.headerCenter}
-        onPress={() => router.push(`/(tabs)/(community)/user/${user.id}`)}
-      >
-        <Image 
-          source={{ uri: user.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.name) + '&size=112&background=6366f1&color=fff' }} 
-          style={styles.headerAvatar} 
-        />
-        <View>
-          <Text style={styles.headerName}>{user.name}</Text>
-          <Text style={styles.headerStatus}>
-            {user.isOnline ? 'Online' : 'Offline'}
+  const handleSend = async () => {
+    if (!inputText.trim() && !selectedImage) return;
+    if (!userId || !currentUser?.uid || !db) {
+      console.error('❌ Cannot send message - missing required data');
+      return;
+    }
+
+    const chatId = [currentUser.uid, userId].sort().join('_');
+    const messageContent = inputText.trim();
+    const messageType = selectedImage ? 'image' : 'text';
+
+    console.log('📤 Sending message to chatId:', chatId);
+
+    try {
+      const chatDocRef = doc(db, 'chats', chatId);
+      await setDoc(chatDocRef, {
+        participants: [currentUser.uid, userId],
+        lastMessageAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      const messagesRef = collection(db, 'chats', chatId, 'messages');
+      await addDoc(messagesRef, {
+        senderId: currentUser.uid,
+        senderName: currentUser.name || 'Unknown',
+        content: messageContent,
+        type: messageType,
+        imageUrl: selectedImage || null,
+        createdAt: serverTimestamp(),
+        isRead: false,
+      });
+
+      console.log('✅ Message sent successfully');
+      setInputText('');
+      setSelectedImage(null);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd();
+      }, 100);
+    } catch (error) {
+      console.error('❌ Error sending message:', error);
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+    }
+  };
+
+  const handleStartRecording = () => {
+    setIsRecording(true);
+    setRecordingDuration(0);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const handleStopRecording = async () => {
+    if (recordingDuration > 0 && userId && currentUser?.uid && db) {
+      const chatId = [currentUser.uid, userId].sort().join('_');
+      
+      try {
+        const chatDocRef = doc(db, 'chats', chatId);
+        await setDoc(chatDocRef, {
+          participants: [currentUser.uid, userId],
+          lastMessageAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
+        await addDoc(messagesRef, {
+          senderId: currentUser.uid,
+          senderName: currentUser.name || 'Unknown',
+          content: 'Voice message',
+          type: 'voice',
+          voiceDuration: recordingDuration,
+          createdAt: serverTimestamp(),
+          isRead: false,
+        });
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (error) {
+        console.error('❌ Error sending voice message:', error);
+        Alert.alert('Error', 'Failed to send voice message.');
+      }
+    }
+    setIsRecording(false);
+    setRecordingDuration(0);
+  };
+
+  const handleCancelRecording = () => {
+    setIsRecording(false);
+    setRecordingDuration(0);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
+  const takePhoto = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    
+    if (permissionResult.granted === false) {
+      Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
+  const handleLongPressMessage = (messageId: string) => {
+    setSelectedMessageId(messageId);
+    setShowMessageMenu(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const handleDeleteMessage = async () => {
+    if (selectedMessageId && userId && currentUser?.uid && db) {
+      const chatId = [currentUser.uid, userId].sort().join('_');
+      
+      try {
+        const messageRef = doc(db, 'chats', chatId, 'messages', selectedMessageId);
+        await deleteDoc(messageRef);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (error) {
+        console.error('❌ Error deleting message:', error);
+        Alert.alert('Error', 'Failed to delete message.');
+      }
+    }
+    setShowMessageMenu(false);
+    setSelectedMessageId(null);
+  };
+
+  const handleTranslateMessage = async () => {
+    if (selectedMessageId) {
+      const message = messages.find(m => m.id === selectedMessageId);
+      if (message && message.type === 'text') {
+        Alert.alert('Translation', 'Translation feature will be available soon.');
+      }
+    }
+    setShowMessageMenu(false);
+    setSelectedMessageId(null);
+  };
+
+  const handleReportMessage = () => {
+    Alert.alert(
+      'Report Message',
+      'Are you sure you want to report this message?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Report', 
+          style: 'destructive',
+          onPress: () => {
+            console.log('Message reported:', selectedMessageId);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Alert.alert('Thank You', 'Your report has been submitted.');
+          }
+        },
+      ]
+    );
+    setShowMessageMenu(false);
+    setSelectedMessageId(null);
+  };
+
+  const renderMessage = ({ item }: { item: Message }) => {
+    const isOwn = item.senderId === currentUser?.uid;
+
+    return (
+      <View style={[styles.messageWrapper, isOwn ? styles.messageWrapperOwn : styles.messageWrapperOther]}>
+        <Pressable 
+          style={[styles.messageBubble, isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther]}
+          onLongPress={() => handleLongPressMessage(item.id)}
+        >
+          {item.type === 'voice' ? (
+            <View style={styles.voiceContent}>
+              <TouchableOpacity style={styles.playButton}>
+                <Play size={18} color={isOwn ? '#fff' : Colors.light.tint} fill={isOwn ? '#fff' : Colors.light.tint} />
+              </TouchableOpacity>
+              <View style={styles.voiceWave}>
+                {[...Array(12)].map((_, i) => (
+                  <View 
+                    key={i} 
+                    style={[
+                      styles.voiceBar, 
+                      { height: Math.random() * 16 + 8 },
+                      isOwn ? styles.voiceBarOwn : styles.voiceBarOther
+                    ]} 
+                  />
+                ))}
+              </View>
+              <Text style={[styles.voiceDuration, isOwn && styles.voiceDurationOwn]}>
+                {formatTime(item.voiceDuration || 0)}
+              </Text>
+            </View>
+          ) : item.type === 'image' && item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
+          ) : (
+            <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
+              {item.content}
+            </Text>
+          )}
+          <Text style={[styles.messageTime, isOwn && styles.messageTimeOwn]}>
+            {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
-        </View>
-      </TouchableOpacity>
-
-      <View style={styles.headerActions}>
-        <TouchableOpacity 
-          style={styles.headerButton}
-          onPress={() => Alert.alert('Sesli Arama', 'Çağrı başlatılıyor...')}
-        >
-          <Phone size={20} color={Colors.light.tint} />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.headerButton}
-          onPress={() => Alert.alert('Görüntülü Arama', 'Video çağrı başlatılıyor...')}
-        >
-          <Video size={20} color={Colors.light.tint} />
-        </TouchableOpacity>
+        </Pressable>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      {renderHeader()}
+      <Stack.Screen
+        options={{
+          headerBackVisible: true,
+          headerTitle: () => (
+            <TouchableOpacity 
+              style={styles.headerTitle}
+              onPress={() => router.push(`/(tabs)/(community)/user/${user.id}` as any)}
+            >
+              <Image source={{ uri: user.avatar }} style={styles.headerAvatar} />
+              <View>
+                <Text style={styles.headerName}>{user.name}</Text>
+                <Text style={styles.headerStatus}>
+                  {user.isOnline ? 'Online' : 'Offline'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ),
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              <TouchableOpacity 
+                style={styles.headerButton}
+                onPress={() => router.push(`/call/${user.id}?type=voice` as any)}
+              >
+                <Phone size={20} color={Colors.light.tint} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.headerButton}
+                onPress={() => router.push(`/call/${user.id}?type=video` as any)}
+              >
+                <Video size={20} color={Colors.light.tint} />
+              </TouchableOpacity>
+            </View>
+          ),
+        }}
+      />
 
       <KeyboardAvoidingView 
         style={styles.keyboardView}
@@ -319,7 +529,7 @@ export default function ChatScreen() {
             
             <TextInput
               style={styles.textInput}
-              placeholder="Mesaj yaz..."
+              placeholder="Type a message..."
               placeholderTextColor={Colors.light.textSecondary}
               value={inputText}
               onChangeText={setInputText}
@@ -377,40 +587,47 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.light.background,
   },
-  customHeader: {
-    flexDirection: 'row',
+  centerContent: {
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 12,
-    backgroundColor: Colors.light.background,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.light.borderLight,
+  },
+  errorText: {
+    fontSize: 16,
+    color: Colors.light.textSecondary,
   },
   backButton: {
-    padding: 8,
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 8,
   },
-  headerCenter: {
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  headerTitle: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
+    gap: 10,
   },
   headerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   headerName: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '600' as const,
     color: Colors.light.text,
   },
   headerStatus: {
     fontSize: 12,
-    color: 'green',
+    color: Colors.light.textSecondary,
   },
   headerActions: {
     flexDirection: 'row',
@@ -424,66 +641,63 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  keyboardView: {
-    flex: 1,
-  },
   messagesList: {
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 8,
   },
   messageWrapper: {
-    marginBottom: 12
+    marginBottom: 12,
   },
   messageWrapperOwn: {
-    alignItems: 'flex-end'
+    alignItems: 'flex-end',
   },
   messageWrapperOther: {
-    alignItems: 'flex-start'
+    alignItems: 'flex-start',
   },
   messageBubble: {
     maxWidth: '80%',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 10
+    paddingVertical: 10,
   },
   messageBubbleOwn: {
     backgroundColor: Colors.light.tint,
-    borderBottomRightRadius: 4
+    borderBottomRightRadius: 4,
   },
   messageBubbleOther: {
     backgroundColor: Colors.light.surface,
     borderBottomLeftRadius: 4,
     borderWidth: 1,
-    borderColor: Colors.light.border
+    borderColor: Colors.light.border,
   },
   messageText: {
     fontSize: 15,
     color: Colors.light.text,
-    lineHeight: 20
+    lineHeight: 20,
   },
   messageTextOwn: {
-    color: '#fff'
+    color: '#fff',
   },
   messageTime: {
     fontSize: 10,
     color: Colors.light.textSecondary,
     marginTop: 4,
-    alignSelf: 'flex-end'
+    alignSelf: 'flex-end',
   },
   messageTimeOwn: {
-    color: 'rgba(255,255,255,0.7)'
+    color: 'rgba(255,255,255,0.7)',
   },
   messageImage: {
     width: 200,
     height: 200,
-    borderRadius: 12
+    borderRadius: 12,
   },
   voiceContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    minWidth: 160
+    minWidth: 160,
   },
   playButton: {
     width: 32,
@@ -491,39 +705,39 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   voiceWave: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    flex: 1
+    flex: 1,
   },
   voiceBar: {
     width: 3,
-    borderRadius: 2
+    borderRadius: 2,
   },
   voiceBarOwn: {
-    backgroundColor: 'rgba(255,255,255,0.6)'
+    backgroundColor: 'rgba(255,255,255,0.6)',
   },
   voiceBarOther: {
-    backgroundColor: Colors.light.tint
+    backgroundColor: Colors.light.tint,
   },
   voiceDuration: {
     fontSize: 12,
-    color: Colors.light.textSecondary
+    color: Colors.light.textSecondary,
   },
   voiceDurationOwn: {
-    color: 'rgba(255,255,255,0.8)'
+    color: 'rgba(255,255,255,0.8)',
   },
   imagePreview: {
     paddingHorizontal: 16,
-    paddingVertical: 8
+    paddingVertical: 8,
   },
   previewImage: {
     width: 80,
     height: 80,
-    borderRadius: 12
+    borderRadius: 12,
   },
   removeImageButton: {
     position: 'absolute',
@@ -534,7 +748,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: Colors.light.error,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   inputContainer: {
     flexDirection: 'row',
@@ -544,7 +758,7 @@ const styles = StyleSheet.create({
     gap: 8,
     borderTopWidth: 1,
     borderTopColor: Colors.light.border,
-    backgroundColor: Colors.light.background
+    backgroundColor: Colors.light.background,
   },
   attachButton: {
     width: 40,
@@ -552,7 +766,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: Colors.light.tintLight,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   textInput: {
     flex: 1,
@@ -565,7 +779,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.light.text,
     borderWidth: 1,
-    borderColor: Colors.light.border
+    borderColor: Colors.light.border,
   },
   sendButton: {
     width: 40,
@@ -573,7 +787,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: Colors.light.tint,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   micButton: {
     width: 40,
@@ -581,7 +795,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: Colors.light.tintLight,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   recordingContainer: {
     flexDirection: 'row',
@@ -590,7 +804,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: Colors.light.border,
-    backgroundColor: Colors.light.background
+    backgroundColor: Colors.light.background,
   },
   cancelRecording: {
     width: 44,
@@ -598,51 +812,51 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: Colors.light.errorLight,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   recordingInfo: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12
+    gap: 12,
   },
   recordingDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: Colors.light.error
+    backgroundColor: Colors.light.error,
   },
   recordingTime: {
     fontSize: 18,
-    fontWeight: '600',
-    color: Colors.light.text
+    fontWeight: '600' as const,
+    color: Colors.light.text,
   },
   stopRecording: {
     width: 44,
     height: 44,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   translatedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 4
+    marginTop: 4,
   },
   translatedText: {
     fontSize: 10,
     color: Colors.light.tint,
-    fontWeight: '500'
+    fontWeight: '500' as const,
   },
   translatedTextOwn: {
-    color: 'rgba(255,255,255,0.8)'
+    color: 'rgba(255,255,255,0.8)',
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   messageMenu: {
     backgroundColor: Colors.light.surface,
@@ -653,7 +867,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 5
+    elevation: 5,
   },
   menuOption: {
     flexDirection: 'row',
@@ -661,31 +875,17 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8
+    borderRadius: 8,
   },
   menuOptionText: {
     fontSize: 16,
-    fontWeight: '500',
-    color: Colors.light.text
+    fontWeight: '500' as const,
+    color: Colors.light.text,
   },
   menuOptionTextDelete: {
-    color: Colors.light.error
+    color: Colors.light.error,
   },
   menuOptionTextWarning: {
-    color: Colors.light.warning
+    color: Colors.light.warning,
   },
-  centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    flex: 1
-  },
-  errorText: {
-    fontSize: 16,
-    color: Colors.light.textSecondary
-  },
-  backButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600'
-  }
 });
