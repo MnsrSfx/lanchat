@@ -9,8 +9,8 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import { router, Stack } from 'expo-router';
-import { Search, MessageCircle } from 'lucide-react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft, Search, MessageCircle, Phone, Video } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/src/firebase';
 import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
@@ -37,6 +37,8 @@ interface ChatItem {
 
 export default function ChatsScreen() {
   const { user: currentUser } = useAuth();
+  const { otherUserId, otherUserName = 'Sohbet', otherUserPhoto } = useLocalSearchParams(); // Chat'ten gelirse params alır
+
   const [searchQuery, setSearchQuery] = useState('');
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,10 +69,7 @@ export default function ChatsScreen() {
 
           try {
             const userDoc = await getDoc(doc(db, 'users', otherUserId));
-            if (!userDoc.exists()) {
-              console.log('⚠️ User document not found for:', otherUserId);
-              continue;
-            }
+            if (!userDoc.exists()) continue;
 
             const otherUserData = userDoc.data();
             
@@ -97,7 +96,7 @@ export default function ChatsScreen() {
               id: chatId,
               otherUser: {
                 id: otherUserId,
-                name: otherUserData.displayName || 'Unknown User',
+                name: otherUserData.displayName || 'Bilinmeyen Kullanıcı',
                 avatar: otherUserData.photoURL || '',
                 isOnline: otherUserData.isOnline || false,
               },
@@ -120,10 +119,7 @@ export default function ChatsScreen() {
       }
     );
 
-    return () => {
-      console.log('🔌 Cleaning up chats listener');
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [currentUser?.uid]);
 
   const filteredChats = chats.filter(chat => 
@@ -132,18 +128,13 @@ export default function ChatsScreen() {
 
   const formatTime = (date: Date) => {
     const now = new Date();
-    const chatDate = new Date(date);
-    const diff = now.getTime() - chatDate.getTime();
+    const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / 86400000);
 
-    if (days === 0) {
-      return chatDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (days === 1) {
-      return 'Yesterday';
-    } else if (days < 7) {
-      return chatDate.toLocaleDateString([], { weekday: 'short' });
-    }
-    return chatDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    if (days === 0) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (days === 1) return 'Dün';
+    if (days < 7) return date.toLocaleDateString([], { weekday: 'short' });
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
   const getAvatarUri = (avatarUrl: string) => {
@@ -153,58 +144,61 @@ export default function ChatsScreen() {
     return avatarUrl;
   };
 
-  const renderChatItem = ({ item }: { item: ChatItem }) => {
-    return (
-      <TouchableOpacity
-        style={styles.chatItem}
-        onPress={() => router.push(`/chat/${item.otherUser.id}` as any)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.avatarContainer}>
-          <Image 
-            source={{ uri: getAvatarUri(item.otherUser.avatar) }} 
-            style={styles.avatar}
-            defaultSource={{ uri: 'https://ui-avatars.com/api/?name=User&size=112&background=6366f1&color=fff' }}
-            onError={() => console.log('⚠️ Avatar failed to load for:', item.otherUser.name)}
-          />
-          <View style={[styles.onlineIndicator, item.otherUser.isOnline ? styles.online : styles.offline]} />
+  const handleBack = () => router.back();
+
+  const renderChatItem = ({ item }: { item: ChatItem }) => (
+    <TouchableOpacity
+      style={styles.chatItem}
+      onPress={() => router.push({
+        pathname: '/chat/[id]',
+        params: { id: item.otherUser.id }
+      })}
+      activeOpacity={0.7}
+    >
+      <View style={styles.avatarContainer}>
+        <Image 
+          source={{ uri: getAvatarUri(item.otherUser.avatar) }} 
+          style={styles.avatar}
+          defaultSource={{ uri: 'https://ui-avatars.com/api/?name=User&size=112&background=6366f1&color=fff' }}
+          onError={() => console.log('⚠️ Avatar failed to load for:', item.otherUser.name)}
+        />
+        <View style={[styles.onlineIndicator, item.otherUser.isOnline ? styles.online : styles.offline]} />
+      </View>
+
+      <View style={styles.chatContent}>
+        <View style={styles.chatHeader}>
+          <Text style={styles.userName}>{item.otherUser.name}</Text>
+          <Text style={[styles.time, item.unreadCount > 0 && styles.timeUnread]}>
+            {formatTime(item.updatedAt)}
+          </Text>
         </View>
 
-        <View style={styles.chatContent}>
-          <View style={styles.chatHeader}>
-            <Text style={styles.userName}>{item.otherUser.name}</Text>
-            <Text style={[styles.time, item.unreadCount > 0 && styles.timeUnread]}>
-              {formatTime(item.updatedAt)}
-            </Text>
-          </View>
-
-          <View style={styles.messageRow}>
-            {item.lastMessage?.type === 'voice' ? (
-              <View style={styles.voiceMessage}>
-                <MessageCircle size={14} color={Colors.light.textSecondary} />
-                <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}>
-                  Voice message ({item.lastMessage.voiceDuration}s)
-                </Text>
-              </View>
-            ) : (
-              <Text 
-                style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}
-                numberOfLines={1}
-              >
-                {item.lastMessage?.senderId === currentUser?.uid ? 'You: ' : ''}
-                {item.lastMessage?.content || 'No messages yet'}
+        <View style={styles.messageRow}>
+          {item.lastMessage?.type === 'voice' ? (
+            <View style={styles.voiceMessage}>
+              <MessageCircle size={14} color={Colors.light.textSecondary} />
+              <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}>
+                Sesli mesaj ({item.lastMessage.voiceDuration}s)
               </Text>
-            )}
-            {item.unreadCount > 0 && (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadCount}>{item.unreadCount}</Text>
-              </View>
-            )}
-          </View>
+            </View>
+          ) : (
+            <Text 
+              style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}
+              numberOfLines={1}
+            >
+              {item.lastMessage?.senderId === currentUser?.uid ? 'Sen: ' : ''}
+              {item.lastMessage?.content || 'Henüz mesaj yok'}
+            </Text>
+          )}
+          {item.unreadCount > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadCount}>{item.unreadCount}</Text>
+            </View>
+          )}
         </View>
-      </TouchableOpacity>
-    );
-  };
+      </View>
+    </TouchableOpacity>
+  );
 
   if (loading) {
     return (
@@ -216,19 +210,37 @@ export default function ChatsScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: 'Chats',
-          headerLargeTitle: true,
-        }}
-      />
+      {/* Custom Header - Sol geri butonu görünür olacak */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+          <ArrowLeft size={28} color={Colors.light.text} />
+        </TouchableOpacity>
 
+        <View style={styles.headerCenter}>
+          <Image
+            source={{ uri: otherUserPhoto || getAvatarUri('') }}
+            style={styles.headerAvatar}
+          />
+          <Text style={styles.headerTitle}>{otherUserName}</Text>
+        </View>
+
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.iconButton}>
+            <Phone size={24} color={Colors.light.tint} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconButton}>
+            <Video size={24} color={Colors.light.tint} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Arama barı */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
           <Search size={20} color={Colors.light.textSecondary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search conversations..."
+            placeholder="Konuşmaları ara..."
             placeholderTextColor={Colors.light.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -236,6 +248,7 @@ export default function ChatsScreen() {
         </View>
       </View>
 
+      {/* Mesaj listesi */}
       <FlatList
         data={filteredChats}
         renderItem={renderChatItem}
@@ -244,13 +257,13 @@ export default function ChatsScreen() {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No conversations yet</Text>
-            <Text style={styles.emptyText}>Start chatting with language partners</Text>
+            <Text style={styles.emptyTitle}>Henüz konuşma yok</Text>
+            <Text style={styles.emptyText}>Dil partnerleriyle sohbet etmeye başla</Text>
             <TouchableOpacity 
               style={styles.findButton}
-              onPress={() => router.push('/(tabs)/community' as any)}
+              onPress={() => router.push('/(tabs)/community')}
             >
-              <Text style={styles.findButtonText}>Find Partners</Text>
+              <Text style={styles.findButtonText}>Partner Bul</Text>
             </TouchableOpacity>
           </View>
         }
@@ -264,9 +277,42 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.light.background,
   },
-  centerContent: {
-    justifyContent: 'center',
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 50, // Status bar/notch için
+    paddingBottom: 12,
+    backgroundColor: Colors.light.background,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.borderLight,
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  headerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.light.text,
+  },
+  headerRight: {
+    flexDirection: 'row',
+  },
+  iconButton: {
+    padding: 8,
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -335,7 +381,7 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 16,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: Colors.light.text,
   },
   time: {
@@ -344,7 +390,7 @@ const styles = StyleSheet.create({
   },
   timeUnread: {
     color: Colors.light.tint,
-    fontWeight: '600' as const,
+    fontWeight: '600',
   },
   messageRow: {
     flexDirection: 'row',
@@ -364,7 +410,7 @@ const styles = StyleSheet.create({
   },
   lastMessageUnread: {
     color: Colors.light.text,
-    fontWeight: '500' as const,
+    fontWeight: '500',
   },
   unreadBadge: {
     backgroundColor: Colors.light.tint,
@@ -377,7 +423,7 @@ const styles = StyleSheet.create({
   },
   unreadCount: {
     fontSize: 12,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: '#fff',
   },
   emptyState: {
@@ -386,7 +432,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: Colors.light.text,
   },
   emptyText: {
@@ -403,7 +449,12 @@ const styles = StyleSheet.create({
   },
   findButtonText: {
     fontSize: 15,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: '#fff',
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    flex: 1,
   },
 });
