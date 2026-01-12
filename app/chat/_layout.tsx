@@ -1,76 +1,81 @@
 import { Stack } from 'expo-router/stack';
 import { View, Text, Image, TouchableOpacity } from 'react-native';
-import { ArrowLeft, Info } from 'lucide-react-native';
+import { ArrowLeft, Phone, Video, Info } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { Alert } from 'react-native'; // Alert için eklendi
 
 export default function ChatLayout() {
   return (
     <Stack
       screenOptions={{
+        headerShown: true,
         headerStyle: { backgroundColor: '#ffffff' },
-        headerShadowVisible: true,
         headerTintColor: '#000000',
+        headerTitleAlign: 'center',
       }}
     >
       <Stack.Screen
-        name="index"  // veya chat ekranın index.tsx ise
+        name="index"
         options={({ route }) => {
-          // route.params'tan karşı taraf bilgilerini al (sen chat'e giderken params geçeceksin)
-          const { otherUserName, otherUserPhoto, otherUserId } = route.params || {};
+          const router = useRouter(); // router'ı burada tanımlıyoruz
+          const { otherUserId, otherUserName = 'Sohbet', otherUserPhoto } = route.params || {};
 
           return {
-            headerTitle: () => (
-              <TouchableOpacity
-                onPress={() => {
-                  if (otherUserId) {
-                    router.push(`/profile/${otherUserId}`);  // veya edit-profile'e yönlendir
-                  }
-                }}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  flex: 1,
-                  justifyContent: 'center',
-                }}
-              >
-                <Image
-                  source={{
-                    uri: otherUserPhoto || 'https://via.placeholder.com/150?text=User',
-                  }}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 20,
-                    marginRight: 12,
-                  }}
-                />
-                <Text
-                  style={{
-                    fontSize: 18,
-                    fontWeight: '600',
-                    color: '#000',
-                  }}
-                >
-                  {otherUserName || 'Sohbet'}
-                </Text>
-              </TouchableOpacity>
-            ),
             headerLeft: () => (
-              <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 8 }}>
+              <TouchableOpacity
+                onPress={() => router.back()}
+                style={{ marginLeft: 10, padding: 8 }}
+              >
                 <ArrowLeft size={28} color="#000" />
               </TouchableOpacity>
             ),
-            headerRight: () => (
+
+            headerTitle: () => (
               <TouchableOpacity
                 onPress={() => {
                   if (otherUserId) {
                     router.push(`/profile/${otherUserId}`);
                   }
                 }}
-                style={{ marginRight: 16 }}
+                style={{ flexDirection: 'row', alignItems: 'center' }}
               >
-                <Info size={28} color="#000" />
+                <Image
+                  source={{
+                    uri: otherUserPhoto || 'https://via.placeholder.com/40?text=User',
+                  }}
+                  style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }}
+                />
+                <View>
+                  <Text style={{ fontSize: 18, fontWeight: '600' }}>
+                    {otherUserName}
+                  </Text>
+                  {/* Online durumu varsa buraya ekleyebilirsin */}
+                </View>
               </TouchableOpacity>
+            ),
+
+            headerRight: () => (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity
+                  onPress={() => Alert.alert('Info', 'Profil bilgileri açılıyor...')}
+                  style={{ marginRight: 16 }}
+                >
+                  <Info size={24} color="#000" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => Alert.alert('Sesli Arama', 'Çağrı başlatılıyor...')}
+                  style={{ marginRight: 16 }}
+                >
+                  <Phone size={24} color="#007AFF" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => Alert.alert('Görüntülü Arama', 'Video çağrı başlatılıyor...')}
+                >
+                  <Video size={24} color="#007AFF" />
+                </TouchableOpacity>
+              </View>
             ),
           };
         }}
