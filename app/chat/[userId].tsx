@@ -56,12 +56,12 @@ export default function ChatScreen() {
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // fetchUser, messages listener, recording useEffect tamamen senin orijinal kodundan
   useEffect(() => {
     const fetchUser = async () => {
       if (!userId) {
         console.error('❌ No userId provided to chat screen');
-        setLoading(false);
+        Alert.alert('Hata', 'Kullanıcı ID bulunamadı.');
+        router.back();
         return;
       }
       
@@ -82,7 +82,7 @@ export default function ChatScreen() {
             id: userDoc.id,
             uid: data.uid,
             email: data.email || '',
-            name: data.displayName || data.email?.split('@')[0] || 'Unknown User',
+            name: data.displayName || data.email?.split('@')[0] || 'Bilinmeyen Kullanıcı',
             avatar: data.photoURL || '',
             photos: data.photos || [],
             bio: data.bio || '',
@@ -98,9 +98,12 @@ export default function ChatScreen() {
           });
         } else {
           console.error('❌ User document not found for userId:', userId);
+          Alert.alert('Hata', 'Kullanıcı bulunamadı.');
+          router.back();
         }
       } catch (error) {
         console.error('❌ Error fetching user:', error);
+        Alert.alert('Hata', 'Kullanıcı yüklenemedi.');
       } finally {
         setLoading(false);
       }
@@ -139,6 +142,7 @@ export default function ChatScreen() {
           };
         }).reverse();
         setMessages(fetchedMessages);
+        flatListRef.current?.scrollToEnd({ animated: true });
       },
       (error) => {
         console.error('❌ Error listening to messages:', error);
@@ -183,10 +187,19 @@ export default function ChatScreen() {
     };
   }, [isRecording, recordingAnimation]);
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleBack = () => router.back();
+
   if (loading) {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={Colors.light.tint} />
+        <Text style={{ marginTop: 10, color: Colors.light.text }}>Yükleniyor...</Text>
       </View>
     );
   }
@@ -197,7 +210,7 @@ export default function ChatScreen() {
         <Text style={styles.errorText}>Kullanıcı bulunamadı</Text>
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
         >
           <Text style={styles.backButtonText}>Geri Dön</Text>
         </TouchableOpacity>
@@ -205,58 +218,50 @@ export default function ChatScreen() {
     );
   }
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  // Custom Header - Sol geri butonu GÖRÜNÜR
+  const renderHeader = () => (
+    <View style={styles.customHeader}>
+      <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+        <ArrowLeft size={28} color={Colors.light.text} />
+      </TouchableOpacity>
 
-  const handleBack = () => router.back();
+      <TouchableOpacity 
+        style={styles.headerCenter}
+        onPress={() => router.push(`/(tabs)/(community)/user/${user.id}`)}
+      >
+        <Image 
+          source={{ uri: user.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.name) + '&size=112&background=6366f1&color=fff' }} 
+          style={styles.headerAvatar} 
+        />
+        <View>
+          <Text style={styles.headerName}>{user.name}</Text>
+          <Text style={styles.headerStatus}>
+            {user.isOnline ? 'Online' : 'Offline'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      <View style={styles.headerActions}>
+        <TouchableOpacity 
+          style={styles.headerButton}
+          onPress={() => Alert.alert('Sesli Arama', 'Çağrı başlatılıyor...')}
+        >
+          <Phone size={20} color={Colors.light.tint} />
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.headerButton}
+          onPress={() => Alert.alert('Görüntülü Arama', 'Video çağrı başlatılıyor...')}
+        >
+          <Video size={20} color={Colors.light.tint} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      {/* Custom Header - Sol geri butonu GÖRÜNÜR olacak */}
-      <View style={styles.customHeader}>
-        {/* Sol üst: Geri Butonu */}
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <ArrowLeft size={28} color={Colors.light.text} />
-        </TouchableOpacity>
+      {renderHeader()}
 
-        {/* Orta: Profil resmi + İsim + Online durumu */}
-        <TouchableOpacity 
-          style={styles.headerCenter}
-          onPress={() => router.push(`/(tabs)/(community)/user/${user.id}`)}
-        >
-          <Image 
-            source={{ uri: user.avatar || 'https://ui-avatars.com/api/?name=User&size=112&background=6366f1&color=fff' }} 
-            style={styles.headerAvatar} 
-          />
-          <View>
-            <Text style={styles.headerName}>{user.name}</Text>
-            <Text style={styles.headerStatus}>
-              {user.isOnline ? 'Online' : 'Offline'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Sağ: Telefon + Video */}
-        <View style={styles.headerActions}>
-          <TouchableOpacity 
-            style={styles.headerButton}
-            onPress={() => Alert.alert('Sesli Arama', 'Çağrı başlatılıyor...')}
-          >
-            <Phone size={20} color={Colors.light.tint} />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.headerButton}
-            onPress={() => Alert.alert('Görüntülü Arama', 'Video çağrı başlatılıyor...')}
-          >
-            <Video size={20} color={Colors.light.tint} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Mevcut KeyboardAvoidingView ve tüm içerik tamamen senin kodundan */}
       <KeyboardAvoidingView 
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -338,7 +343,6 @@ export default function ChatScreen() {
         )}
       </KeyboardAvoidingView>
 
-      {/* Modal ve diğer kısımlar tamamen senin orijinal kodundan */}
       <Modal
         visible={showMessageMenu}
         transparent
@@ -368,7 +372,6 @@ export default function ChatScreen() {
   );
 }
 
-// Styles tamamen senin orijinalinden + custom header için eklenenler
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -402,7 +405,7 @@ const styles = StyleSheet.create({
   },
   headerName: {
     fontSize: 18,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: Colors.light.text,
   },
   headerStatus: {
@@ -430,57 +433,57 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   messageWrapper: {
-    marginBottom: 12,
+    marginBottom: 12
   },
   messageWrapperOwn: {
-    alignItems: 'flex-end',
+    alignItems: 'flex-end'
   },
   messageWrapperOther: {
-    alignItems: 'flex-start',
+    alignItems: 'flex-start'
   },
   messageBubble: {
     maxWidth: '80%',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 10
   },
   messageBubbleOwn: {
     backgroundColor: Colors.light.tint,
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: 4
   },
   messageBubbleOther: {
     backgroundColor: Colors.light.surface,
     borderBottomLeftRadius: 4,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: Colors.light.border
   },
   messageText: {
     fontSize: 15,
     color: Colors.light.text,
-    lineHeight: 20,
+    lineHeight: 20
   },
   messageTextOwn: {
-    color: '#fff',
+    color: '#fff'
   },
   messageTime: {
     fontSize: 10,
     color: Colors.light.textSecondary,
     marginTop: 4,
-    alignSelf: 'flex-end',
+    alignSelf: 'flex-end'
   },
   messageTimeOwn: {
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.7)'
   },
   messageImage: {
     width: 200,
     height: 200,
-    borderRadius: 12,
+    borderRadius: 12
   },
   voiceContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    minWidth: 160,
+    minWidth: 160
   },
   playButton: {
     width: 32,
@@ -488,39 +491,39 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   voiceWave: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    flex: 1,
+    flex: 1
   },
   voiceBar: {
     width: 3,
-    borderRadius: 2,
+    borderRadius: 2
   },
   voiceBarOwn: {
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(255,255,255,0.6)'
   },
   voiceBarOther: {
-    backgroundColor: Colors.light.tint,
+    backgroundColor: Colors.light.tint
   },
   voiceDuration: {
     fontSize: 12,
-    color: Colors.light.textSecondary,
+    color: Colors.light.textSecondary
   },
   voiceDurationOwn: {
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.8)'
   },
   imagePreview: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 8
   },
   previewImage: {
     width: 80,
     height: 80,
-    borderRadius: 12,
+    borderRadius: 12
   },
   removeImageButton: {
     position: 'absolute',
@@ -531,7 +534,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: Colors.light.error,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   inputContainer: {
     flexDirection: 'row',
@@ -541,7 +544,7 @@ const styles = StyleSheet.create({
     gap: 8,
     borderTopWidth: 1,
     borderTopColor: Colors.light.border,
-    backgroundColor: Colors.light.background,
+    backgroundColor: Colors.light.background
   },
   attachButton: {
     width: 40,
@@ -549,7 +552,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: Colors.light.tintLight,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   textInput: {
     flex: 1,
@@ -562,7 +565,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.light.text,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: Colors.light.border
   },
   sendButton: {
     width: 40,
@@ -570,7 +573,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: Colors.light.tint,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   micButton: {
     width: 40,
@@ -578,7 +581,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: Colors.light.tintLight,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   recordingContainer: {
     flexDirection: 'row',
@@ -587,7 +590,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: Colors.light.border,
-    backgroundColor: Colors.light.background,
+    backgroundColor: Colors.light.background
   },
   cancelRecording: {
     width: 44,
@@ -595,51 +598,51 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: Colors.light.errorLight,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   recordingInfo: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: 12
   },
   recordingDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: Colors.light.error,
+    backgroundColor: Colors.light.error
   },
   recordingTime: {
     fontSize: 18,
-    fontWeight: '600' as const,
-    color: Colors.light.text,
+    fontWeight: '600',
+    color: Colors.light.text
   },
   stopRecording: {
     width: 44,
     height: 44,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   translatedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 4,
+    marginTop: 4
   },
   translatedText: {
     fontSize: 10,
     color: Colors.light.tint,
-    fontWeight: '500' as const,
+    fontWeight: '500'
   },
   translatedTextOwn: {
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.8)'
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   messageMenu: {
     backgroundColor: Colors.light.surface,
@@ -650,7 +653,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 5,
+    elevation: 5
   },
   menuOption: {
     flexDirection: 'row',
@@ -658,31 +661,31 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 8
   },
   menuOptionText: {
     fontSize: 16,
-    fontWeight: '500' as const,
-    color: Colors.light.text,
+    fontWeight: '500',
+    color: Colors.light.text
   },
   menuOptionTextDelete: {
-    color: Colors.light.error,
+    color: Colors.light.error
   },
   menuOptionTextWarning: {
-    color: Colors.light.warning,
+    color: Colors.light.warning
   },
   centerContent: {
     justifyContent: 'center',
     alignItems: 'center',
-    flex: 1,
+    flex: 1
   },
   errorText: {
     fontSize: 16,
-    color: Colors.light.textSecondary,
+    color: Colors.light.textSecondary
   },
   backButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600' as const,
-  },
+    fontWeight: '600'
+  }
 });
