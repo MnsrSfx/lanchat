@@ -442,7 +442,7 @@ export default function ChatScreen() {
           headerTitle: () => (
             <TouchableOpacity 
               style={styles.headerTitle}
-              onPress={() => router.push(`/(tabs)/(community)/user/${user.id}` as any)}
+              onPress={() => router.push(`/user/${user.id}`)}
             >
               <Image source={{ uri: user.avatar }} style={styles.headerAvatar} />
               <View>
@@ -457,13 +457,13 @@ export default function ChatScreen() {
             <View style={styles.headerActions}>
               <TouchableOpacity 
                 style={styles.headerButton}
-                onPress={() => router.push(`/call/${user.id}?type=voice` as any)}
+                onPress={() => router.push(`/call/${user.id}?type=voice`)}
               >
                 <Phone size={20} color={Colors.light.tint} />
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.headerButton}
-                onPress={() => router.push(`/call/${user.id}?type=video` as any)}
+                onPress={() => router.push(`/call/${user.id}?type=video`)}
               >
                 <Video size={20} color={Colors.light.tint} />
               </TouchableOpacity>
@@ -582,6 +582,7 @@ export default function ChatScreen() {
   );
 }
 
+// styles kısmı aynı kalıyor, değiştirmedim
 const styles = StyleSheet.create({
   container: {
     flex: 1,
