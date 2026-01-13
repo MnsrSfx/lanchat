@@ -1,141 +1,892 @@
-import { View, Text, StyleSheet, Image, ScrollView, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import { useState, useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/src/firebase'; // firebase config'in yolunu kontrol et
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Animated,
+  Modal,
+  Pressable,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { useLocalSearchParams, router, Stack } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
+import { 
+  Send, 
+  Mic, 
+  Image as ImageIcon, 
+  Phone, 
+  Video, 
+  X,
+  Play,
+  StopCircle,
+  Camera,
+  Trash2,
+  Languages,
+  Flag,
+} from 'lucide-react-native';
+import { Message, User } from '@/types';
+import { db } from '@/src/firebase';
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc } from 'firebase/firestore';
+import Colors from '@/constants/colors';
+import { useAuth } from '@/contexts/AuthContext';
 
-export default function UserProfile() {
+export default function ChatScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
-  const [profile, setProfile] = useState<any>(null);
+  const { user: currentUser } = useAuth();
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [showMessageMenu, setShowMessageMenu] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
+  const recordingAnimation = useRef(new Animated.Value(1)).current;
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (!userId) {
-      setError('Kullanıcı ID bulunamadı');
-      setLoading(false);
-      return;
-    }
-
-    const fetchProfile = async () => {
+    const fetchUser = async () => {
+      if (!userId) {
+        console.error('❌ No userId provided to chat screen');
+        setLoading(false);
+        return;
+      }
+      
+      if (!db) {
+        console.error('❌ Firebase db not initialized');
+        setLoading(false);
+        return;
+      }
+      
       try {
-        const userRef = doc(db, 'users', userId);
-        const snap = await getDoc(userRef);
-
-        if (snap.exists()) {
-          const data = snap.data();
-          setProfile({
-            ...data,
-            age: data.age || 'Belirtilmemiş',
-            bio: data.bio || 'Bio eklenmemiş',
-            displayName: data.displayName || data.email?.split('@')[0] || 'İsimsiz Kullanıcı',
-            photoURL: data.photoURL || 'https://via.placeholder.com/150', // varsayılan avatar
+        console.log('📥 Fetching user data for userId:', userId);
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          console.log('✅ User data fetched successfully:', data.displayName);
+          setUser({
+            id: userDoc.id,
+            uid: data.uid,
+            email: data.email || '',
+            name: data.displayName || data.email?.split('@')[0] || 'Unknown User',
+            avatar: data.photoURL || '',
+            photos: data.photos || [],
+            bio: data.bio || '',
+            nativeLanguage: data.nativeLanguage || { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
+            learningLanguages: data.learningLanguages || [],
+            isOnline: data.isOnline || false,
+            lastSeen: data.lastSeen?.toDate() || new Date(),
+            country: data.country || '',
+            city: data.city || '',
+            age: data.age || 0,
+            isVerified: data.isVerified || false,
+            createdAt: data.createdAt?.toDate() || new Date(),
           });
         } else {
-          setError('Kullanıcı bulunamadı');
+          console.error('❌ User document not found for userId:', userId);
         }
-      } catch (err: any) {
-        console.error('Profil yükleme hatası:', err);
-        setError('Profil yüklenemedi: ' + err.message);
+      } catch (error) {
+        console.error('❌ Error fetching user:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchProfile();
+    fetchUser();
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId || !currentUser?.uid || !db) {
+      console.log('⚠️ Skipping messages listener - missing required data');
+      return;
+    }
+
+    const chatId = [currentUser.uid, userId].sort().join('_');
+    console.log('📡 Setting up messages listener for chatId:', chatId);
+
+    const messagesRef = collection(db, 'chats', chatId, 'messages');
+    const q = query(messagesRef, orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        console.log('📥 Received', snapshot.docs.length, 'messages');
+        const fetchedMessages: Message[] = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            chatId,
+            senderId: data.senderId || '',
+            content: data.content || '',
+            type: data.type || 'text',
+            imageUrl: data.imageUrl,
+            voiceDuration: data.voiceDuration,
+            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
+            isRead: data.isRead || false,
+          };
+        }).reverse();
+        setMessages(fetchedMessages);
+      },
+      (error) => {
+        console.error('❌ Error listening to messages:', error);
+      }
+    );
+
+    return () => {
+      console.log('🔌 Cleaning up messages listener');
+      unsubscribe();
+    };
+  }, [userId, currentUser?.uid]);
+
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(recordingAnimation, {
+            toValue: 1.3,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(recordingAnimation, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } else {
+      recordingAnimation.stopAnimation();
+      recordingAnimation.setValue(1);
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+    }
+
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+    };
+  }, [isRecording, recordingAnimation]);
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#4CAF50" />
-        <Text style={{ marginTop: 16 }}>Profil yükleniyor...</Text>
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={Colors.light.tint} />
       </View>
     );
   }
 
-  if (error) {
+  if (!user) {
     return (
-      <View style={styles.center}>
-        <Text style={{ color: 'red', fontSize: 18 }}>{error}</Text>
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>User not found</Text>
+        <Text style={[styles.errorText, { fontSize: 14, marginTop: 8 }]}>
+          {userId ? `User ID: ${userId}` : 'No user ID provided'}
+        </Text>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  if (!profile) {
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleSend = async () => {
+    if (!inputText.trim() && !selectedImage) return;
+    if (!userId || !currentUser?.uid || !db) {
+      console.error('❌ Cannot send message - missing required data');
+      return;
+    }
+
+    const chatId = [currentUser.uid, userId].sort().join('_');
+    const messageContent = inputText.trim();
+    const messageType = selectedImage ? 'image' : 'text';
+
+    console.log('📤 Sending message to chatId:', chatId);
+
+    try {
+      const chatDocRef = doc(db, 'chats', chatId);
+      await setDoc(chatDocRef, {
+        participants: [currentUser.uid, userId],
+        lastMessageAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      const messagesRef = collection(db, 'chats', chatId, 'messages');
+      await addDoc(messagesRef, {
+        senderId: currentUser.uid,
+        senderName: currentUser.name || 'Unknown',
+        content: messageContent,
+        type: messageType,
+        imageUrl: selectedImage || null,
+        createdAt: serverTimestamp(),
+        isRead: false,
+      });
+
+      console.log('✅ Message sent successfully');
+      setInputText('');
+      setSelectedImage(null);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd();
+      }, 100);
+    } catch (error) {
+      console.error('❌ Error sending message:', error);
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+    }
+  };
+
+  const handleStartRecording = () => {
+    setIsRecording(true);
+    setRecordingDuration(0);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const handleStopRecording = async () => {
+    if (recordingDuration > 0 && userId && currentUser?.uid && db) {
+      const chatId = [currentUser.uid, userId].sort().join('_');
+      
+      try {
+        const chatDocRef = doc(db, 'chats', chatId);
+        await setDoc(chatDocRef, {
+          participants: [currentUser.uid, userId],
+          lastMessageAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
+        await addDoc(messagesRef, {
+          senderId: currentUser.uid,
+          senderName: currentUser.name || 'Unknown',
+          content: 'Voice message',
+          type: 'voice',
+          voiceDuration: recordingDuration,
+          createdAt: serverTimestamp(),
+          isRead: false,
+        });
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (error) {
+        console.error('❌ Error sending voice message:', error);
+        Alert.alert('Error', 'Failed to send voice message.');
+      }
+    }
+    setIsRecording(false);
+    setRecordingDuration(0);
+  };
+
+  const handleCancelRecording = () => {
+    setIsRecording(false);
+    setRecordingDuration(0);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
+  const takePhoto = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    
+    if (permissionResult.granted === false) {
+      Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
+  const handleLongPressMessage = (messageId: string) => {
+    setSelectedMessageId(messageId);
+    setShowMessageMenu(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const handleDeleteMessage = async () => {
+    if (selectedMessageId && userId && currentUser?.uid && db) {
+      const chatId = [currentUser.uid, userId].sort().join('_');
+      
+      try {
+        const messageRef = doc(db, 'chats', chatId, 'messages', selectedMessageId);
+        await deleteDoc(messageRef);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (error) {
+        console.error('❌ Error deleting message:', error);
+        Alert.alert('Error', 'Failed to delete message.');
+      }
+    }
+    setShowMessageMenu(false);
+    setSelectedMessageId(null);
+  };
+
+  const handleTranslateMessage = async () => {
+    if (selectedMessageId) {
+      const message = messages.find(m => m.id === selectedMessageId);
+      if (message && message.type === 'text') {
+        Alert.alert('Translation', 'Translation feature will be available soon.');
+      }
+    }
+    setShowMessageMenu(false);
+    setSelectedMessageId(null);
+  };
+
+  const handleReportMessage = () => {
+    Alert.alert(
+      'Report Message',
+      'Are you sure you want to report this message?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Report', 
+          style: 'destructive',
+          onPress: () => {
+            console.log('Message reported:', selectedMessageId);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Alert.alert('Thank You', 'Your report has been submitted.');
+          }
+        },
+      ]
+    );
+    setShowMessageMenu(false);
+    setSelectedMessageId(null);
+  };
+
+  const renderMessage = ({ item }: { item: Message }) => {
+    const isOwn = item.senderId === currentUser?.uid;
+
     return (
-      <View style={styles.center}>
-        <Text>Kullanıcı bilgisi yok</Text>
+      <View style={[styles.messageWrapper, isOwn ? styles.messageWrapperOwn : styles.messageWrapperOther]}>
+        <Pressable 
+          style={[styles.messageBubble, isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther]}
+          onLongPress={() => handleLongPressMessage(item.id)}
+        >
+          {item.type === 'voice' ? (
+            <View style={styles.voiceContent}>
+              <TouchableOpacity style={styles.playButton}>
+                <Play size={18} color={isOwn ? '#fff' : Colors.light.tint} fill={isOwn ? '#fff' : Colors.light.tint} />
+              </TouchableOpacity>
+              <View style={styles.voiceWave}>
+                {[...Array(12)].map((_, i) => (
+                  <View 
+                    key={i} 
+                    style={[
+                      styles.voiceBar, 
+                      { height: Math.random() * 16 + 8 },
+                      isOwn ? styles.voiceBarOwn : styles.voiceBarOther
+                    ]} 
+                  />
+                ))}
+              </View>
+              <Text style={[styles.voiceDuration, isOwn && styles.voiceDurationOwn]}>
+                {formatTime(item.voiceDuration || 0)}
+              </Text>
+            </View>
+          ) : item.type === 'image' && item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
+          ) : (
+            <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
+              {item.content}
+            </Text>
+          )}
+          <Text style={[styles.messageTime, isOwn && styles.messageTimeOwn]}>
+            {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        </Pressable>
       </View>
     );
-  }
+  };
 
   return (
-    <ScrollView style={styles.container}>
-      {/* Avatar ve İsim */}
-      <View style={styles.header}>
-        <Image
-          source={{ uri: profile.photoURL }}
-          style={styles.avatar}
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen
+        options={{
+          headerBackVisible: true,
+          headerTitle: () => (
+          <TouchableOpacity 
+  style={styles.headerTitle}
+  onPress={() => router.push(`/community/user/${user.id}`)}
+            >              
+              <Image source={{ uri: user.avatar }} style={styles.headerAvatar} />
+              <View>
+                <Text style={styles.headerName}>{user.name}</Text>
+                <Text style={styles.headerStatus}>
+                  {user.isOnline ? 'Online' : 'Offline'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ),
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              <TouchableOpacity 
+                style={styles.headerButton}
+                onPress={() => router.push(`/call/${user.id}?type=voice`)}
+              >
+                <Phone size={20} color={Colors.light.tint} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+  style={styles.headerTitle}
+  onPress={() => router.push(`/community/user/${user.id}`)}
+              >
+                <Video size={20} color={Colors.light.tint} />
+              </TouchableOpacity>
+            </View>
+          ),
+        }}
+      />
+
+      <KeyboardAvoidingView 
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={90}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.messagesList}
+          showsVerticalScrollIndicator={false}
         />
-        <Text style={styles.name}>{profile.displayName}</Text>
-      </View>
 
-      {/* Temel Bilgiler */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Temel Bilgiler</Text>
-        <Text style={styles.info}>Yaş: {profile.age}</Text>
-        <Text style={styles.info}>Ülke: {profile.country || 'Belirtilmemiş'}</Text>
-        <Text style={styles.info}>Şehir: {profile.city || 'Belirtilmemiş'}</Text>
-        <Text style={styles.info}>Doğrulanmış: {profile.isVerified ? 'Evet' : 'Hayır'}</Text>
-      </View>
-
-      {/* Bio */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Hakkında</Text>
-        <Text style={styles.bio}>{profile.bio}</Text>
-      </View>
-
-      {/* Diller */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Diller</Text>
-        {profile.nativeLanguage && (
-          <Text style={styles.info}>
-            Ana Dil: {profile.nativeLanguage.name} ({profile.nativeLanguage.level})
-          </Text>
-        )}
-        {profile.learningLanguages?.length > 0 && (
-          <Text style={styles.info}>
-            Öğrenilen Diller: {profile.learningLanguages.map((l: any) => l.name).join(', ')}
-          </Text>
-        )}
-      </View>
-
-      {/* Fotoğraflar (eğer varsa) */}
-      {profile.photos?.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Fotoğraflar</Text>
-          <View style={styles.photoGrid}>
-            {profile.photos.map((photo: string, index: number) => (
-              <Image key={index} source={{ uri: photo }} style={styles.photo} />
-            ))}
+        {selectedImage && (
+          <View style={styles.imagePreview}>
+            <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+            <TouchableOpacity 
+              style={styles.removeImageButton}
+              onPress={() => setSelectedImage(null)}
+            >
+              <X size={16} color="#fff" />
+            </TouchableOpacity>
           </View>
-        </View>
-      )}
-    </ScrollView>
+        )}
+
+        {isRecording ? (
+          <View style={styles.recordingContainer}>
+            <TouchableOpacity onPress={handleCancelRecording} style={styles.cancelRecording}>
+              <X size={24} color={Colors.light.error} />
+            </TouchableOpacity>
+            
+            <View style={styles.recordingInfo}>
+              <Animated.View 
+                style={[
+                  styles.recordingDot,
+                  { transform: [{ scale: recordingAnimation }] }
+                ]} 
+              />
+              <Text style={styles.recordingTime}>{formatTime(recordingDuration)}</Text>
+            </View>
+
+            <TouchableOpacity onPress={handleStopRecording} style={styles.stopRecording}>
+              <StopCircle size={32} color={Colors.light.tint} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.inputContainer}>
+            <TouchableOpacity style={styles.attachButton} onPress={takePhoto}>
+              <Camera size={22} color={Colors.light.tint} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.attachButton} onPress={pickImage}>
+              <ImageIcon size={22} color={Colors.light.tint} />
+            </TouchableOpacity>
+            
+            <TextInput
+              style={styles.textInput}
+              placeholder="Type a message..."
+              placeholderTextColor={Colors.light.textSecondary}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              maxLength={1000}
+            />
+            
+            {inputText.trim() || selectedImage ? (
+              <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+                <Send size={20} color="#fff" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={styles.micButton}
+                onPress={handleStartRecording}
+              >
+                <Mic size={22} color={Colors.light.tint} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </KeyboardAvoidingView>
+
+      <Modal
+        visible={showMessageMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMessageMenu(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowMessageMenu(false)}>
+          <View style={styles.messageMenu}>
+            <TouchableOpacity style={styles.menuOption} onPress={handleTranslateMessage}>
+              <Languages size={20} color={Colors.light.tint} />
+              <Text style={styles.menuOptionText}>Translate</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.menuOption} onPress={handleDeleteMessage}>
+              <Trash2 size={20} color={Colors.light.error} />
+              <Text style={[styles.menuOptionText, styles.menuOptionTextDelete]}>Delete</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.menuOption} onPress={handleReportMessage}>
+              <Flag size={20} color={Colors.light.warning} />
+              <Text style={[styles.menuOptionText, styles.menuOptionTextWarning]}>Report</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
+// styles kısmı aynı kalıyor, değiştirmedim
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9f9f9' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  header: { alignItems: 'center', padding: 30, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee' },
-  avatar: { width: 120, height: 120, borderRadius: 60, marginBottom: 12, borderWidth: 3, borderColor: '#4CAF50' },
-  name: { fontSize: 26, fontWeight: 'bold', color: '#333' },
-  section: { padding: 20, backgroundColor: '#fff', marginBottom: 12, borderBottomWidth: 1, borderColor: '#eee' },
-  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12, color: '#4CAF50' },
-  info: { fontSize: 16, color: '#555', marginBottom: 8 },
-  bio: { fontSize: 16, color: '#444', lineHeight: 24 },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  photo: { width: 110, height: 110, borderRadius: 12 },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.light.background,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: Colors.light.textSecondary,
+  },
+  backButton: {
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 8,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  headerTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  headerName: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+  },
+  headerStatus: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.light.tintLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messagesList: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  messageWrapper: {
+    marginBottom: 12,
+  },
+  messageWrapperOwn: {
+    alignItems: 'flex-end',
+  },
+  messageWrapperOther: {
+    alignItems: 'flex-start',
+  },
+  messageBubble: {
+    maxWidth: '80%',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  messageBubbleOwn: {
+    backgroundColor: Colors.light.tint,
+    borderBottomRightRadius: 4,
+  },
+  messageBubbleOther: {
+    backgroundColor: Colors.light.surface,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  messageText: {
+    fontSize: 15,
+    color: Colors.light.text,
+    lineHeight: 20,
+  },
+  messageTextOwn: {
+    color: '#fff',
+  },
+  messageTime: {
+    fontSize: 10,
+    color: Colors.light.textSecondary,
+    marginTop: 4,
+    alignSelf: 'flex-end',
+  },
+  messageTimeOwn: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+  },
+  voiceContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 160,
+  },
+  playButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  voiceWave: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flex: 1,
+  },
+  voiceBar: {
+    width: 3,
+    borderRadius: 2,
+  },
+  voiceBarOwn: {
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
+  voiceBarOther: {
+    backgroundColor: Colors.light.tint,
+  },
+  voiceDuration: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  voiceDurationOwn: {
+    color: 'rgba(255,255,255,0.8)',
+  },
+  imagePreview: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  previewImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 4,
+    left: 72,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.light.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
+    backgroundColor: Colors.light.background,
+  },
+  attachButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.light.tintLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textInput: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 100,
+    backgroundColor: Colors.light.surface,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: Colors.light.text,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.light.tint,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  micButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.light.tintLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
+    backgroundColor: Colors.light.background,
+  },
+  cancelRecording: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.light.errorLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  recordingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.light.error,
+  },
+  recordingTime: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+  },
+  stopRecording: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  translatedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  translatedText: {
+    fontSize: 10,
+    color: Colors.light.tint,
+    fontWeight: '500' as const,
+  },
+  translatedTextOwn: {
+    color: 'rgba(255,255,255,0.8)',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messageMenu: {
+    backgroundColor: Colors.light.surface,
+    borderRadius: 16,
+    padding: 8,
+    minWidth: 200,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  menuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  menuOptionText: {
+    fontSize: 16,
+    fontWeight: '500' as const,
+    color: Colors.light.text,
+  },
+  menuOptionTextDelete: {
+    color: Colors.light.error,
+  },
+  menuOptionTextWarning: {
+    color: Colors.light.warning,
+  },
 });
