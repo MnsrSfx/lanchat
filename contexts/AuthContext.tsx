@@ -21,7 +21,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Platform } from 'react-native';
+import { Platform, AppState, AppStateStatus } from 'react-native';
 
 const AUTH_STORAGE_KEY = 'lanchat_auth';
 const AUTH_TIMEOUT_MS = 10000;
@@ -107,6 +107,20 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
     
     let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+    let appStateSubscription: any = null;
+    
+    const setUserOnlineStatus = async (uid: string, isOnline: boolean) => {
+      try {
+        const userRef = doc(firebaseDb, 'users', uid);
+        await setDoc(userRef, {
+          isOnline,
+          lastSeen: serverTimestamp(),
+        }, { merge: true });
+        console.log('✅ User status updated:', isOnline ? 'Online' : 'Offline');
+      } catch (error) {
+        console.error('❌ Error updating online status:', error);
+      }
+    };
     
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
       if (firebaseUser) {
@@ -114,47 +128,49 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         if (stored) {
           const parsed: StoredAuth = JSON.parse(stored);
           if (parsed.user) {
-            try {
-              const userRef = doc(firebaseDb, 'users', firebaseUser.uid);
-              
-              await setDoc(userRef, {
-                isOnline: true,
-                lastSeen: serverTimestamp(),
-              }, { merge: true });
-              
-              if (Platform.OS === 'web') {
-                heartbeatInterval = setInterval(async () => {
-                  try {
-                    await setDoc(userRef, {
-                      isOnline: true,
-                      lastSeen: serverTimestamp(),
-                    }, { merge: true });
-                  } catch (error) {
-                    console.log('Heartbeat error:', error);
-                  }
-                }, 30000);
-                
-                const handleBeforeUnload = async () => {
-                  await setDoc(userRef, {
-                    isOnline: false,
-                    lastSeen: serverTimestamp(),
-                  }, { merge: true });
-                };
-                
-                window.addEventListener('beforeunload', handleBeforeUnload);
-                
-                return () => {
-                  window.removeEventListener('beforeunload', handleBeforeUnload);
-                };
+            await setUserOnlineStatus(firebaseUser.uid, true);
+            
+            heartbeatInterval = setInterval(async () => {
+              try {
+                await setUserOnlineStatus(firebaseUser.uid, true);
+              } catch (error) {
+                console.log('Heartbeat error:', error);
               }
-            } catch (error) {
-              console.log('Error updating online status:', error);
+            }, 30000);
+            
+            if (Platform.OS === 'web') {
+              const handleBeforeUnload = async () => {
+                await setUserOnlineStatus(firebaseUser.uid, false);
+              };
+              
+              window.addEventListener('beforeunload', handleBeforeUnload);
+              
+              return () => {
+                window.removeEventListener('beforeunload', handleBeforeUnload);
+              };
+            } else {
+              const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+                console.log('📱 App state changed:', nextAppState);
+                
+                if (nextAppState === 'active') {
+                  await setUserOnlineStatus(firebaseUser.uid, true);
+                } else if (nextAppState === 'background' || nextAppState === 'inactive') {
+                  await setUserOnlineStatus(firebaseUser.uid, false);
+                }
+              };
+              
+              appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
             }
           }
         }
       } else {
         if (heartbeatInterval) {
           clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+        if (appStateSubscription) {
+          appStateSubscription.remove();
+          appStateSubscription = null;
         }
       }
     });
@@ -162,6 +178,9 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     return () => {
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
+      }
+      if (appStateSubscription) {
+        appStateSubscription.remove();
       }
       if (unsubscribe) {
         unsubscribe();
