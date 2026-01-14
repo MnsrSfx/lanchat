@@ -38,6 +38,7 @@ import { db } from '@/src/firebase';
 import { doc, getDoc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
+import Avatar from '@/components/Avatar';
 
 export default function ChatScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
@@ -442,9 +443,9 @@ export default function ChatScreen() {
           headerTitle: () => (
             <TouchableOpacity 
               style={styles.headerTitle}
-              onPress={() => router.push(`/user/${user.id}`)}
+              onPress={() => router.push(`/user/${user.id}` as any)}
             >
-              <Image source={{ uri: user.avatar }} style={styles.headerAvatar} />
+              <Avatar uri={user.avatar} name={user.name} size={36} />
               <View>
                 <Text style={styles.headerName}>{user.name}</Text>
                 <Text style={styles.headerStatus}>
@@ -457,13 +458,13 @@ export default function ChatScreen() {
             <View style={styles.headerActions}>
               <TouchableOpacity 
                 style={styles.headerButton}
-                onPress={() => router.push(`/call/${user.id}?type=voice`)}
+                onPress={() => router.push(`/call/${user.id}?type=voice` as any)}
               >
                 <Phone size={20} color={Colors.light.tint} />
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.headerButton}
-                onPress={() => router.push(`/call/${user.id}?type=video`)}
+                onPress={() => router.push(`/call/${user.id}?type=video` as any)}
               >
                 <Video size={20} color={Colors.light.tint} />
               </TouchableOpacity>
@@ -616,11 +617,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  headerAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
+
   headerName: {
     fontSize: 16,
     fontWeight: '600' as const,
