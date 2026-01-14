@@ -58,7 +58,11 @@ function RootLayoutNav() {
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="chat/[userId]" options={{ headerShown: true }} />
+    </Stack>
+  );
 }
 
 export default function RootLayout() {
