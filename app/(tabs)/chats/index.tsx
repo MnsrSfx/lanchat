@@ -9,7 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { ArrowLeft, Search, MessageCircle, Phone, Video } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/src/firebase';
@@ -37,7 +37,6 @@ interface ChatItem {
 
 export default function ChatsScreen() {
   const { user: currentUser } = useAuth();
-  const { otherUserId, otherUserName = 'Sohbet', otherUserPhoto } = useLocalSearchParams(); // Chat'ten gelirse params alır
 
   const [searchQuery, setSearchQuery] = useState('');
   const [chats, setChats] = useState<ChatItem[]>([]);
@@ -217,11 +216,7 @@ export default function ChatsScreen() {
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
-          <Image
-            source={{ uri: otherUserPhoto || getAvatarUri('') }}
-            style={styles.headerAvatar}
-          />
-          <Text style={styles.headerTitle}>{otherUserName}</Text>
+          <Text style={styles.headerTitle}>Chats</Text>
         </View>
 
         <View style={styles.headerRight}>
