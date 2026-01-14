@@ -55,6 +55,7 @@ export default function ChatsScreen() {
     const chatsQuery = query(chatsRef, where('participants', 'array-contains', currentUser.uid));
 
     const userListenersMap = new Map<string, () => void>();
+    const userDataCache = new Map<string, { name: string; avatar: string; isOnline: boolean }>();
 
     const unsubscribe = onSnapshot(chatsQuery, 
       async (snapshot) => {
@@ -70,11 +71,39 @@ export default function ChatsScreen() {
           if (!otherUserId || !db) continue;
           currentUserIds.add(otherUserId);
 
+          // Fetch user data immediately if not in cache
+          if (!userDataCache.has(otherUserId)) {
+            try {
+              const userDocSnap = await getDocs(query(collection(db, 'users'), where('__name__', '==', otherUserId), limit(1)));
+              
+              if (!userDocSnap.empty) {
+                const userData = userDocSnap.docs[0].data();
+                userDataCache.set(otherUserId, {
+                  name: userData.displayName || 'Unknown User',
+                  avatar: userData.photoURL || '',
+                  isOnline: userData.isOnline || false,
+                });
+              }
+            } catch (error) {
+              console.error('❌ Error fetching user data:', error);
+            }
+          }
+
+          // Set up real-time listener for online status
           if (!userListenersMap.has(otherUserId)) {
             const userDocRef = doc(db, 'users', otherUserId);
             const userUnsubscribe = onSnapshot(userDocRef, (userDoc: DocumentSnapshot) => {
               if (userDoc.exists()) {
                 const otherUserData = userDoc.data();
+                const userData = {
+                  name: otherUserData.displayName || 'Unknown User',
+                  avatar: otherUserData.photoURL || '',
+                  isOnline: otherUserData.isOnline || false,
+                };
+                
+                console.log('📡 User data updated:', userData.name, 'isOnline:', userData.isOnline);
+                userDataCache.set(otherUserId, userData);
+                
                 setChats(prevChats => 
                   prevChats.map(chat => 
                     chat.otherUser.id === otherUserId
@@ -82,9 +111,9 @@ export default function ChatsScreen() {
                           ...chat,
                           otherUser: {
                             ...chat.otherUser,
-                            isOnline: otherUserData.isOnline || false,
-                            name: otherUserData.displayName || 'Bilinmeyen Kullanıcı',
-                            avatar: otherUserData.photoURL || '',
+                            name: userData.name,
+                            avatar: userData.avatar,
+                            isOnline: userData.isOnline,
                           },
                         }
                       : chat
@@ -115,15 +144,15 @@ export default function ChatsScreen() {
             const unreadQuery = query(messagesRef, where('isRead', '==', false), where('senderId', '!=', currentUser.uid));
             const unreadSnapshot = await getDocs(unreadQuery);
 
-            const existingChat = userChats.find(c => c.id === chatId);
+            const cachedUserData = userDataCache.get(otherUserId);
             
             userChats.push({
               id: chatId,
-              otherUser: existingChat?.otherUser || {
+              otherUser: {
                 id: otherUserId,
-                name: 'Loading...',
-                avatar: '',
-                isOnline: false,
+                name: cachedUserData?.name || 'Loading...',
+                avatar: cachedUserData?.avatar || '',
+                isOnline: cachedUserData?.isOnline || false,
               },
               lastMessage,
               unreadCount: unreadSnapshot.size,
