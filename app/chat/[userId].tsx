@@ -605,6 +605,7 @@ export default function ChatScreen() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen
         options={{
+          headerShown: true,
           headerBackVisible: true,
           headerTitle: () => (
             <TouchableOpacity 
