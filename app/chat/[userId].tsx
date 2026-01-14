@@ -443,7 +443,7 @@ export default function ChatScreen() {
           headerTitle: () => (
             <TouchableOpacity 
               style={styles.headerTitle}
-              onPress={() => router.push(`/user/${user.id}` as any)}
+              onPress={() => router.push(`/(tabs)/community/user/${user.id}` as any)}
             >
               <Avatar uri={user.avatar} name={user.name} size={36} />
               <View>

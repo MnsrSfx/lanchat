@@ -38,6 +38,7 @@ import { db } from '@/src/firebase';
 import { doc, getDoc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
+import Avatar from '@/components/Avatar';
 
 export default function ChatScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
@@ -440,11 +441,11 @@ export default function ChatScreen() {
         options={{
           headerBackVisible: true,
           headerTitle: () => (
-          <TouchableOpacity 
-  style={styles.headerTitle}
-  onPress={() => router.push(`/community/user/${user.id}`)}
-            >              
-              <Image source={{ uri: user.avatar }} style={styles.headerAvatar} />
+            <TouchableOpacity 
+              style={styles.headerTitle}
+              onPress={() => router.push(`/(tabs)/community/user/${user.id}` as any)}
+            >
+              <Avatar uri={user.avatar} name={user.name} size={36} />
               <View>
                 <Text style={styles.headerName}>{user.name}</Text>
                 <Text style={styles.headerStatus}>
@@ -457,13 +458,13 @@ export default function ChatScreen() {
             <View style={styles.headerActions}>
               <TouchableOpacity 
                 style={styles.headerButton}
-                onPress={() => router.push(`/call/${user.id}?type=voice`)}
+                onPress={() => router.push(`/call/${user.id}?type=voice` as any)}
               >
                 <Phone size={20} color={Colors.light.tint} />
               </TouchableOpacity>
               <TouchableOpacity 
-  style={styles.headerTitle}
-  onPress={() => router.push(`/community/user/${user.id}`)}
+                style={styles.headerButton}
+                onPress={() => router.push(`/call/${user.id}?type=video` as any)}
               >
                 <Video size={20} color={Colors.light.tint} />
               </TouchableOpacity>
