@@ -9,6 +9,7 @@ import {
   ScrollView,
   StatusBar,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { X } from 'lucide-react-native';
 
@@ -28,6 +29,7 @@ export default function PhotoGalleryModal({
   onClose,
 }: PhotoGalleryModalProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [loadingImages, setLoadingImages] = useState<{ [key: number]: boolean }>({});
 
   const handleScroll = (event: any) => {
     const offsetX = event.nativeEvent.contentOffset.x;
@@ -38,8 +40,17 @@ export default function PhotoGalleryModal({
   React.useEffect(() => {
     if (visible) {
       setCurrentIndex(initialIndex);
+      const initialLoading: { [key: number]: boolean } = {};
+      photos.forEach((_, index) => {
+        initialLoading[index] = true;
+      });
+      setLoadingImages(initialLoading);
     }
-  }, [visible, initialIndex]);
+  }, [visible, initialIndex, photos]);
+
+  const handleImageLoad = (index: number) => {
+    setLoadingImages((prev) => ({ ...prev, [index]: false }));
+  };
 
   return (
     <Modal
@@ -67,10 +78,19 @@ export default function PhotoGalleryModal({
         >
           {photos.map((photo, index) => (
             <View key={index} style={styles.imageContainer}>
+              {loadingImages[index] && (
+                <ActivityIndicator
+                  size="large"
+                  color="#fff"
+                  style={styles.loader}
+                />
+              )}
               <Image
                 source={{ uri: photo }}
                 style={styles.image}
                 resizeMode="contain"
+                onLoad={() => handleImageLoad(index)}
+                onError={() => handleImageLoad(index)}
               />
             </View>
           ))}
@@ -122,6 +142,10 @@ const styles = StyleSheet.create({
   image: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
+  },
+  loader: {
+    position: 'absolute',
+    zIndex: 1,
   },
   pagination: {
     position: 'absolute',
