@@ -35,7 +35,7 @@ import {
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
 import { db } from '@/src/firebase';
-import { doc, getDoc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc } from 'firebase/firestore';
+import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import Avatar from '@/components/Avatar';
@@ -57,26 +57,27 @@ export default function ChatScreen() {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      if (!userId) {
-        console.error('❌ No userId provided to chat screen');
-        setLoading(false);
-        return;
-      }
-      
-      if (!db) {
-        console.error('❌ Firebase db not initialized');
-        setLoading(false);
-        return;
-      }
-      
-      try {
-        console.log('📥 Fetching user data for userId:', userId);
-        const userDoc = await getDoc(doc(db, 'users', userId));
-        
+    if (!userId) {
+      console.error('❌ No userId provided to chat screen');
+      setLoading(false);
+      return;
+    }
+    
+    if (!db) {
+      console.error('❌ Firebase db not initialized');
+      setLoading(false);
+      return;
+    }
+    
+    console.log('📡 Setting up real-time listener for user:', userId);
+    const userDocRef = doc(db, 'users', userId);
+    
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      (userDoc: DocumentSnapshot) => {
         if (userDoc.exists()) {
           const data = userDoc.data();
-          console.log('✅ User data fetched successfully:', data.displayName);
+          console.log('📥 User data updated:', data.displayName, 'isOnline:', data.isOnline);
           setUser({
             id: userDoc.id,
             uid: data.uid,
@@ -98,14 +99,18 @@ export default function ChatScreen() {
         } else {
           console.error('❌ User document not found for userId:', userId);
         }
-      } catch (error) {
-        console.error('❌ Error fetching user:', error);
-      } finally {
+        setLoading(false);
+      },
+      (error) => {
+        console.error('❌ Error listening to user:', error);
         setLoading(false);
       }
-    };
+    );
 
-    fetchUser();
+    return () => {
+      console.log('🔌 Cleaning up user listener');
+      unsubscribe();
+    };
   }, [userId]);
 
   useEffect(() => {

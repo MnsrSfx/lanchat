@@ -13,7 +13,7 @@ import { router } from 'expo-router';
 import { ArrowLeft, Search, MessageCircle, Phone, Video } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/src/firebase';
-import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, DocumentSnapshot } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 
 interface ChatItem {
@@ -54,10 +54,13 @@ export default function ChatsScreen() {
     const chatsRef = collection(db, 'chats');
     const chatsQuery = query(chatsRef, where('participants', 'array-contains', currentUser.uid));
 
+    const userListenersMap = new Map<string, () => void>();
+
     const unsubscribe = onSnapshot(chatsQuery, 
       async (snapshot) => {
         console.log('📥 Received', snapshot.docs.length, 'chats');
         const userChats: ChatItem[] = [];
+        const currentUserIds = new Set<string>();
 
         for (const chatDoc of snapshot.docs) {
           const chatId = chatDoc.id;
@@ -65,13 +68,34 @@ export default function ChatsScreen() {
           
           const otherUserId = participants.find(id => id !== currentUser.uid);
           if (!otherUserId || !db) continue;
+          currentUserIds.add(otherUserId);
+
+          if (!userListenersMap.has(otherUserId)) {
+            const userDocRef = doc(db, 'users', otherUserId);
+            const userUnsubscribe = onSnapshot(userDocRef, (userDoc: DocumentSnapshot) => {
+              if (userDoc.exists()) {
+                const otherUserData = userDoc.data();
+                setChats(prevChats => 
+                  prevChats.map(chat => 
+                    chat.otherUser.id === otherUserId
+                      ? {
+                          ...chat,
+                          otherUser: {
+                            ...chat.otherUser,
+                            isOnline: otherUserData.isOnline || false,
+                            name: otherUserData.displayName || 'Bilinmeyen Kullanıcı',
+                            avatar: otherUserData.photoURL || '',
+                          },
+                        }
+                      : chat
+                  )
+                );
+              }
+            });
+            userListenersMap.set(otherUserId, userUnsubscribe);
+          }
 
           try {
-            const userDoc = await getDoc(doc(db, 'users', otherUserId));
-            if (!userDoc.exists()) continue;
-
-            const otherUserData = userDoc.data();
-            
             const messagesRef = collection(db, 'chats', chatId, 'messages');
             const lastMessageQuery = query(messagesRef, orderBy('createdAt', 'desc'), limit(1));
             const messagesSnapshot = await getDocs(lastMessageQuery);
@@ -91,13 +115,15 @@ export default function ChatsScreen() {
             const unreadQuery = query(messagesRef, where('isRead', '==', false), where('senderId', '!=', currentUser.uid));
             const unreadSnapshot = await getDocs(unreadQuery);
 
+            const existingChat = userChats.find(c => c.id === chatId);
+            
             userChats.push({
               id: chatId,
-              otherUser: {
+              otherUser: existingChat?.otherUser || {
                 id: otherUserId,
-                name: otherUserData.displayName || 'Bilinmeyen Kullanıcı',
-                avatar: otherUserData.photoURL || '',
-                isOnline: otherUserData.isOnline || false,
+                name: 'Loading...',
+                avatar: '',
+                isOnline: false,
               },
               lastMessage,
               unreadCount: unreadSnapshot.size,
@@ -107,6 +133,13 @@ export default function ChatsScreen() {
             console.error('❌ Error processing chat:', chatId, error);
           }
         }
+
+        userListenersMap.forEach((unsubscribe, userId) => {
+          if (!currentUserIds.has(userId)) {
+            unsubscribe();
+            userListenersMap.delete(userId);
+          }
+        });
 
         userChats.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
         setChats(userChats);
@@ -118,7 +151,11 @@ export default function ChatsScreen() {
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      userListenersMap.forEach(unsubscribe => unsubscribe());
+      userListenersMap.clear();
+    };
   }, [currentUser?.uid]);
 
   const filteredChats = chats.filter(chat => 

@@ -14,7 +14,7 @@ import Colors from '@/constants/colors';
 import Avatar from '@/components/Avatar';
 import PhotoGalleryModal from '@/components/PhotoGalleryModal';
 import { db } from '@/src/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, DocumentSnapshot } from 'firebase/firestore';
 import { User } from '@/types';
 
 export default function UserProfileScreen() {
@@ -25,15 +25,20 @@ export default function UserProfileScreen() {
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      if (!userId || !db) {
-        setLoading(false);
-        return;
-      }
-      try {
-        const userDoc = await getDoc(doc(db, 'users', userId));
+    if (!userId || !db) {
+      setLoading(false);
+      return;
+    }
+
+    console.log('📡 Setting up real-time listener for user profile:', userId);
+    const userDocRef = doc(db, 'users', userId);
+
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      (userDoc: DocumentSnapshot) => {
         if (userDoc.exists()) {
           const data = userDoc.data();
+          console.log('📥 User profile updated:', data.displayName, 'isOnline:', data.isOnline);
           setUser({
             id: userDoc.id,
             uid: data.uid,
@@ -53,14 +58,18 @@ export default function UserProfileScreen() {
             createdAt: data.createdAt?.toDate() || new Date(),
           });
         }
-      } catch (error) {
-        console.error('Error fetching user:', error);
-      } finally {
+        setLoading(false);
+      },
+      (error) => {
+        console.error('❌ Error listening to user profile:', error);
         setLoading(false);
       }
-    };
+    );
 
-    fetchUser();
+    return () => {
+      console.log('🔌 Cleaning up user profile listener');
+      unsubscribe();
+    };
   }, [userId]);
 
   const photos = user?.photos && user.photos.length > 0 ? user.photos : user?.avatar ? [user.avatar] : [];
