@@ -19,6 +19,9 @@ import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
+import { Audio } from 'expo-av';
+import { db, storage } from '@/src/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   Send, 
   Mic, 
@@ -34,7 +37,6 @@ import {
   Flag,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
-import { db } from '@/src/firebase';
 import { doc, getDoc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,6 +52,10 @@ export default function ChatScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [audioRecording, setAudioRecording] = useState<Audio.Recording | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [playingSound, setPlayingSound] = useState<Audio.Sound | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [showMessageMenu, setShowMessageMenu] = useState(false);
   const flatListRef = useRef<FlatList>(null);
@@ -132,6 +138,7 @@ export default function ChatScreen() {
             content: data.content || '',
             type: data.type || 'text',
             imageUrl: data.imageUrl,
+            voiceUrl: data.voiceUrl,
             voiceDuration: data.voiceDuration,
             createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
             isRead: data.isRead || false,
@@ -185,6 +192,14 @@ export default function ChatScreen() {
     };
   }, [isRecording, recordingAnimation]);
 
+  useEffect(() => {
+    return () => {
+      if (playingSound) {
+        playingSound.unloadAsync();
+      }
+    };
+  }, [playingSound]);
+
   if (loading) {
     return (
       <View style={[styles.container, styles.centerContent]}>
@@ -216,6 +231,30 @@ export default function ChatScreen() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const uploadImageToStorage = async (uri: string): Promise<string> => {
+    if (!storage || !currentUser?.uid) {
+      throw new Error('Storage not initialized or user not found');
+    }
+
+    try {
+      console.log('📤 Uploading image to storage...');
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      const filename = `chat-images/${currentUser.uid}/${Date.now()}.jpg`;
+      const storageRef = ref(storage, filename);
+      
+      await uploadBytes(storageRef, blob);
+      const downloadURL = await getDownloadURL(storageRef);
+      
+      console.log('✅ Image uploaded successfully:', downloadURL);
+      return downloadURL;
+    } catch (error) {
+      console.error('❌ Error uploading image:', error);
+      throw error;
+    }
+  };
+
   const handleSend = async () => {
     if (!inputText.trim() && !selectedImage) return;
     if (!userId || !currentUser?.uid || !db) {
@@ -229,7 +268,13 @@ export default function ChatScreen() {
 
     console.log('📤 Sending message to chatId:', chatId);
 
+    setIsUploading(true);
     try {
+      let imageUrl = null;
+      if (selectedImage) {
+        imageUrl = await uploadImageToStorage(selectedImage);
+      }
+
       const chatDocRef = doc(db, 'chats', chatId);
       await setDoc(chatDocRef, {
         participants: [currentUser.uid, userId],
@@ -243,7 +288,7 @@ export default function ChatScreen() {
         senderName: currentUser.name || 'Unknown',
         content: messageContent,
         type: messageType,
-        imageUrl: selectedImage || null,
+        imageUrl: imageUrl,
         createdAt: serverTimestamp(),
         isRead: false,
       });
@@ -259,51 +304,118 @@ export default function ChatScreen() {
     } catch (error) {
       console.error('❌ Error sending message:', error);
       Alert.alert('Error', 'Failed to send message. Please try again.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
-  const handleStartRecording = () => {
-    setIsRecording(true);
-    setRecordingDuration(0);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  const handleStartRecording = async () => {
+    try {
+      console.log('🎤 Starting audio recording...');
+      const { status } = await Audio.requestPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Microphone permission is required to record audio.');
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+
+      setAudioRecording(recording);
+      setIsRecording(true);
+      setRecordingDuration(0);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      console.log('✅ Recording started');
+    } catch (error) {
+      console.error('❌ Error starting recording:', error);
+      Alert.alert('Error', 'Failed to start recording.');
+    }
   };
 
   const handleStopRecording = async () => {
-    if (recordingDuration > 0 && userId && currentUser?.uid && db) {
-      const chatId = [currentUser.uid, userId].sort().join('_');
-      
-      try {
-        const chatDocRef = doc(db, 'chats', chatId);
-        await setDoc(chatDocRef, {
-          participants: [currentUser.uid, userId],
-          lastMessageAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
+    if (!audioRecording || recordingDuration === 0 || !userId || !currentUser?.uid || !db || !storage) {
+      console.error('❌ Cannot send voice message - missing required data');
+      setIsRecording(false);
+      setRecordingDuration(0);
+      setAudioRecording(null);
+      return;
+    }
 
-        const messagesRef = collection(db, 'chats', chatId, 'messages');
-        await addDoc(messagesRef, {
-          senderId: currentUser.uid,
-          senderName: currentUser.name || 'Unknown',
-          content: 'Voice message',
-          type: 'voice',
-          voiceDuration: recordingDuration,
-          createdAt: serverTimestamp(),
-          isRead: false,
-        });
-        
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } catch (error) {
-        console.error('❌ Error sending voice message:', error);
-        Alert.alert('Error', 'Failed to send voice message.');
+    const chatId = [currentUser.uid, userId].sort().join('_');
+    setIsUploading(true);
+    
+    try {
+      console.log('⏹️ Stopping recording...');
+      await audioRecording.stopAndUnloadAsync();
+      const uri = audioRecording.getURI();
+      
+      if (!uri) {
+        throw new Error('Recording URI not found');
       }
+
+      console.log('📤 Uploading audio to storage...');
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      const filename = `voice-messages/${currentUser.uid}/${Date.now()}.m4a`;
+      const storageRef = ref(storage, filename);
+      
+      await uploadBytes(storageRef, blob);
+      const audioUrl = await getDownloadURL(storageRef);
+      
+      console.log('✅ Audio uploaded successfully:', audioUrl);
+
+      const chatDocRef = doc(db, 'chats', chatId);
+      await setDoc(chatDocRef, {
+        participants: [currentUser.uid, userId],
+        lastMessageAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      const messagesRef = collection(db, 'chats', chatId, 'messages');
+      await addDoc(messagesRef, {
+        senderId: currentUser.uid,
+        senderName: currentUser.name || 'Unknown',
+        content: 'Voice message',
+        type: 'voice',
+        voiceUrl: audioUrl,
+        voiceDuration: recordingDuration,
+        createdAt: serverTimestamp(),
+        isRead: false,
+      });
+      
+      console.log('✅ Voice message sent successfully');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('❌ Error sending voice message:', error);
+      Alert.alert('Error', 'Failed to send voice message.');
+    } finally {
+      setIsRecording(false);
+      setRecordingDuration(0);
+      setAudioRecording(null);
+      setIsUploading(false);
+    }
+  };
+
+  const handleCancelRecording = async () => {
+    try {
+      if (audioRecording) {
+        await audioRecording.stopAndUnloadAsync();
+      }
+    } catch (error) {
+      console.error('❌ Error canceling recording:', error);
     }
     setIsRecording(false);
     setRecordingDuration(0);
-  };
-
-  const handleCancelRecording = () => {
-    setIsRecording(false);
-    setRecordingDuration(0);
+    setAudioRecording(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -390,8 +502,44 @@ export default function ChatScreen() {
     setSelectedMessageId(null);
   };
 
+  const handlePlayVoice = async (messageId: string, voiceUrl: string) => {
+    try {
+      if (playingMessageId === messageId && playingSound) {
+        console.log('⏸️ Pausing voice message');
+        await playingSound.pauseAsync();
+        setPlayingMessageId(null);
+        return;
+      }
+
+      if (playingSound) {
+        await playingSound.unloadAsync();
+      }
+
+      console.log('▶️ Playing voice message:', voiceUrl);
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: voiceUrl },
+        { shouldPlay: true }
+      );
+
+      setPlayingSound(sound);
+      setPlayingMessageId(messageId);
+
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          console.log('✅ Voice message finished playing');
+          setPlayingMessageId(null);
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error playing voice message:', error);
+      Alert.alert('Error', 'Failed to play voice message.');
+    }
+  };
+
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwn = item.senderId === currentUser?.uid;
+    const isPlaying = playingMessageId === item.id;
 
     return (
       <View style={[styles.messageWrapper, isOwn ? styles.messageWrapperOwn : styles.messageWrapperOther]}>
@@ -401,8 +549,16 @@ export default function ChatScreen() {
         >
           {item.type === 'voice' ? (
             <View style={styles.voiceContent}>
-              <TouchableOpacity style={styles.playButton}>
-                <Play size={18} color={isOwn ? '#fff' : Colors.light.tint} fill={isOwn ? '#fff' : Colors.light.tint} />
+              <TouchableOpacity 
+                style={styles.playButton}
+                onPress={() => item.voiceUrl && handlePlayVoice(item.id, item.voiceUrl)}
+                disabled={!item.voiceUrl}
+              >
+                {isPlaying ? (
+                  <StopCircle size={18} color={isOwn ? '#fff' : Colors.light.tint} fill={isOwn ? '#fff' : Colors.light.tint} />
+                ) : (
+                  <Play size={18} color={isOwn ? '#fff' : Colors.light.tint} fill={isOwn ? '#fff' : Colors.light.tint} />
+                )}
               </TouchableOpacity>
               <View style={styles.voiceWave}>
                 {[...Array(12)].map((_, i) => (
@@ -421,7 +577,9 @@ export default function ChatScreen() {
               </Text>
             </View>
           ) : item.type === 'image' && item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
+            <TouchableOpacity onPress={() => Alert.alert('Image', 'Image viewer coming soon')}>
+              <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
+            </TouchableOpacity>
           ) : (
             <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
               {item.content}
@@ -536,16 +694,26 @@ export default function ChatScreen() {
               onChangeText={setInputText}
               multiline
               maxLength={1000}
+              editable={!isUploading}
             />
             
             {inputText.trim() || selectedImage ? (
-              <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-                <Send size={20} color="#fff" />
+              <TouchableOpacity 
+                style={styles.sendButton} 
+                onPress={handleSend}
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Send size={20} color="#fff" />
+                )}
               </TouchableOpacity>
             ) : (
               <TouchableOpacity 
                 style={styles.micButton}
                 onPress={handleStartRecording}
+                disabled={isUploading}
               >
                 <Mic size={22} color={Colors.light.tint} />
               </TouchableOpacity>

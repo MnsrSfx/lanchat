@@ -32,6 +32,7 @@ export interface Message {
   content: string;
   type: 'text' | 'voice' | 'image';
   voiceDuration?: number;
+  voiceUrl?: string;
   imageUrl?: string;
   createdAt: Date;
   isRead: boolean;
