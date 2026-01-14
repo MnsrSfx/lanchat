@@ -148,10 +148,7 @@ export default function ChatsScreen() {
   const renderChatItem = ({ item }: { item: ChatItem }) => (
     <TouchableOpacity
       style={styles.chatItem}
-      onPress={() => router.push({
-        pathname: '/chat/[id]',
-        params: { id: item.otherUser.id }
-      })}
+      onPress={() => router.push(`/chat/${item.otherUser.id}` as any)}
       activeOpacity={0.7}
     >
       <View style={styles.avatarContainer}>

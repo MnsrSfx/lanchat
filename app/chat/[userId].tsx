@@ -41,6 +41,7 @@ import { doc, getDoc, collection, addDoc, serverTimestamp, query, orderBy, onSna
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import Avatar from '@/components/Avatar';
+import PhotoGalleryModal from '@/components/PhotoGalleryModal';
 
 export default function ChatScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
@@ -58,6 +59,8 @@ export default function ChatScreen() {
   const [playingSound, setPlayingSound] = useState<Audio.Sound | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [showMessageMenu, setShowMessageMenu] = useState(false);
+  const [showImageGallery, setShowImageGallery] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -537,7 +540,7 @@ export default function ChatScreen() {
     }
   };
 
-  const renderMessage = ({ item }: { item: Message }) => {
+  const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isOwn = item.senderId === currentUser?.uid;
     const isPlaying = playingMessageId === item.id;
 
@@ -577,7 +580,12 @@ export default function ChatScreen() {
               </Text>
             </View>
           ) : item.type === 'image' && item.imageUrl ? (
-            <TouchableOpacity onPress={() => Alert.alert('Image', 'Image viewer coming soon')}>
+            <TouchableOpacity onPress={() => {
+              const imageMessages = messages.filter(m => m.type === 'image' && m.imageUrl);
+              const imageIndex = imageMessages.findIndex(m => m.id === item.id);
+              setSelectedImageIndex(imageIndex >= 0 ? imageIndex : 0);
+              setShowImageGallery(true);
+            }}>
               <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
             </TouchableOpacity>
           ) : (
@@ -747,6 +755,15 @@ export default function ChatScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <PhotoGalleryModal
+        visible={showImageGallery}
+        photos={messages
+          .filter(m => m.type === 'image' && m.imageUrl)
+          .map(m => m.imageUrl!)}
+        initialIndex={selectedImageIndex}
+        onClose={() => setShowImageGallery(false)}
+      />
     </SafeAreaView>
   );
 }
