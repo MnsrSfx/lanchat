@@ -8,12 +8,13 @@ import {
   Image,
   TextInput,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { ArrowLeft, Search, MessageCircle, Phone, Video } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/src/firebase';
-import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, DocumentSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, DocumentSnapshot, writeBatch } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 
 interface ChatItem {
@@ -239,10 +240,55 @@ export default function ChatsScreen() {
 
   const handleBack = () => router.back();
 
+  const handleDeleteChat = async (chatId: string, userName: string) => {
+    Alert.alert(
+      'Sohbeti Sil',
+      `${userName} ile olan tüm sohbet silinecek. Emin misiniz?`,
+      [
+        {
+          text: 'İptal',
+          style: 'cancel',
+        },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (!db) return;
+              
+              console.log('🗑️ Deleting chat:', chatId);
+              
+              const messagesRef = collection(db, 'chats', chatId, 'messages');
+              const messagesSnapshot = await getDocs(messagesRef);
+              
+              const batch = writeBatch(db);
+              messagesSnapshot.docs.forEach((doc) => {
+                batch.delete(doc.ref);
+              });
+              
+              const chatDocRef = doc(db, 'chats', chatId);
+              batch.delete(chatDocRef);
+              
+              await batch.commit();
+              console.log('✅ Chat deleted successfully');
+              
+              setChats(prevChats => prevChats.filter(chat => chat.id !== chatId));
+            } catch (error) {
+              console.error('❌ Error deleting chat:', error);
+              Alert.alert('Hata', 'Sohbet silinirken bir hata oluştu.');
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
   const renderChatItem = ({ item }: { item: ChatItem }) => (
     <TouchableOpacity
       style={styles.chatItem}
       onPress={() => router.push(`/chat/${item.otherUser.id}` as any)}
+      onLongPress={() => handleDeleteChat(item.id, item.otherUser.name)}
       activeOpacity={0.7}
     >
       <View style={styles.avatarContainer}>
