@@ -60,7 +60,7 @@ export default function ChatScreen() {
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [showMessageMenu, setShowMessageMenu] = useState(false);
   const [showImageGallery, setShowImageGallery] = useState(false);
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -625,9 +625,8 @@ export default function ChatScreen() {
             </View>
           ) : item.type === 'image' && item.imageUrl ? (
             <TouchableOpacity onPress={() => {
-              const imageMessages = messages.filter(m => m.type === 'image' && m.imageUrl);
-              const imageIndex = imageMessages.findIndex(m => m.id === item.id);
-              setSelectedImageIndex(imageIndex >= 0 ? imageIndex : 0);
+              console.log('📸 Opening image:', item.imageUrl);
+              setSelectedImages([item.imageUrl!]);
               setShowImageGallery(true);
             }}>
               <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
@@ -816,11 +815,12 @@ export default function ChatScreen() {
 
       <PhotoGalleryModal
         visible={showImageGallery}
-        photos={messages
-          .filter(m => m.type === 'image' && m.imageUrl)
-          .map(m => m.imageUrl!)}
-        initialIndex={selectedImageIndex}
-        onClose={() => setShowImageGallery(false)}
+        photos={selectedImages}
+        initialIndex={0}
+        onClose={() => {
+          setShowImageGallery(false);
+          setSelectedImages([]);
+        }}
       />
     </SafeAreaView>
   );
