@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,7 @@ export default function PhotoGalleryModal({
   initialIndex = 0,
   onClose,
 }: PhotoGalleryModalProps) {
+  const scrollViewRef = useRef<ScrollView>(null);
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [loadingImages, setLoadingImages] = useState<{ [key: number]: boolean }>({});
   const [errorImages, setErrorImages] = useState<{ [key: number]: boolean }>({});
@@ -39,7 +40,7 @@ export default function PhotoGalleryModal({
     setCurrentIndex(index);
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (visible) {
       setCurrentIndex(initialIndex);
       const initialLoading: { [key: number]: boolean } = {};
@@ -48,6 +49,14 @@ export default function PhotoGalleryModal({
       });
       setLoadingImages(initialLoading);
       setErrorImages({});
+      
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({
+          x: initialIndex * SCREEN_WIDTH,
+          y: 0,
+          animated: false,
+        });
+      }, 100);
     }
   }, [visible, initialIndex, photos]);
 
@@ -78,12 +87,12 @@ export default function PhotoGalleryModal({
         </TouchableOpacity>
 
         <ScrollView
+          ref={scrollViewRef}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={16}
-          contentOffset={{ x: initialIndex * SCREEN_WIDTH, y: 0 }}
         >
           {photos.map((photo, index) => (
             <View key={index} style={styles.imageContainer}>
