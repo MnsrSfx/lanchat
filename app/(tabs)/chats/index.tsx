@@ -55,6 +55,7 @@ export default function ChatsScreen() {
     const chatsQuery = query(chatsRef, where('participants', 'array-contains', currentUser.uid));
 
     const userListenersMap = new Map<string, () => void>();
+    const messageListenersMap = new Map<string, () => void>();
     const userDataCache = new Map<string, { name: string; avatar: string; isOnline: boolean }>();
 
     const unsubscribe = onSnapshot(chatsQuery, 
@@ -158,6 +159,23 @@ export default function ChatsScreen() {
               unreadCount: unreadSnapshot.size,
               updatedAt: lastMessage?.createdAt || new Date(0),
             });
+
+            if (!messageListenersMap.has(chatId)) {
+              const messagesUnsubscribe = onSnapshot(
+                query(messagesRef, where('isRead', '==', false), where('senderId', '!=', currentUser.uid)),
+                (unreadMessagesSnapshot) => {
+                  console.log('📥 Unread count updated for chat:', chatId, 'count:', unreadMessagesSnapshot.size);
+                  setChats(prevChats => 
+                    prevChats.map(chat => 
+                      chat.id === chatId
+                        ? { ...chat, unreadCount: unreadMessagesSnapshot.size }
+                        : chat
+                    )
+                  );
+                }
+              );
+              messageListenersMap.set(chatId, messagesUnsubscribe);
+            }
           } catch (error) {
             console.error('❌ Error processing chat:', chatId, error);
           }
@@ -167,6 +185,14 @@ export default function ChatsScreen() {
           if (!currentUserIds.has(userId)) {
             unsubscribe();
             userListenersMap.delete(userId);
+          }
+        });
+
+        const currentChatIds = new Set(userChats.map(chat => chat.id));
+        messageListenersMap.forEach((unsubscribe, chatId) => {
+          if (!currentChatIds.has(chatId)) {
+            unsubscribe();
+            messageListenersMap.delete(chatId);
           }
         });
 
@@ -184,6 +210,8 @@ export default function ChatsScreen() {
       unsubscribe();
       userListenersMap.forEach(unsubscribe => unsubscribe());
       userListenersMap.clear();
+      messageListenersMap.forEach(unsubscribe => unsubscribe());
+      messageListenersMap.clear();
     };
   }, [currentUser?.uid]);
 

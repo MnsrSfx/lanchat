@@ -37,7 +37,7 @@ import {
   Flag,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
-import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot } from 'firebase/firestore';
+import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot, updateDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import Avatar from '@/components/Avatar';
@@ -135,7 +135,7 @@ export default function ChatScreen() {
     const q = query(messagesRef, orderBy('createdAt', 'desc'));
 
     const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
+      async (snapshot) => {
         console.log('📥 Received', snapshot.docs.length, 'messages');
         const fetchedMessages: Message[] = snapshot.docs.map(doc => {
           const data = doc.data();
@@ -153,6 +153,23 @@ export default function ChatScreen() {
           };
         }).reverse();
         setMessages(fetchedMessages);
+
+        const unreadMessages = snapshot.docs.filter(doc => {
+          const data = doc.data();
+          return data.senderId === userId && data.isRead === false;
+        });
+
+        if (unreadMessages.length > 0 && db) {
+          console.log('📖 Marking', unreadMessages.length, 'messages as read');
+          for (const messageDoc of unreadMessages) {
+            try {
+              const messageRef = doc(db, 'chats', chatId, 'messages', messageDoc.id);
+              await updateDoc(messageRef, { isRead: true });
+            } catch (error) {
+              console.error('❌ Error marking message as read:', error);
+            }
+          }
+        }
       },
       (error) => {
         console.error('❌ Error listening to messages:', error);
