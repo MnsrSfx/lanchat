@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   View,
+  Text,
   Modal,
   Image,
   StyleSheet,
@@ -30,6 +31,7 @@ export default function PhotoGalleryModal({
 }: PhotoGalleryModalProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [loadingImages, setLoadingImages] = useState<{ [key: number]: boolean }>({});
+  const [errorImages, setErrorImages] = useState<{ [key: number]: boolean }>({});
 
   const handleScroll = (event: any) => {
     const offsetX = event.nativeEvent.contentOffset.x;
@@ -45,11 +47,18 @@ export default function PhotoGalleryModal({
         initialLoading[index] = true;
       });
       setLoadingImages(initialLoading);
+      setErrorImages({});
     }
   }, [visible, initialIndex, photos]);
 
   const handleImageLoad = (index: number) => {
     setLoadingImages((prev) => ({ ...prev, [index]: false }));
+  };
+
+  const handleImageError = (index: number) => {
+    console.error('❌ Failed to load image at index:', index, photos[index]);
+    setLoadingImages((prev) => ({ ...prev, [index]: false }));
+    setErrorImages((prev) => ({ ...prev, [index]: true }));
   };
 
   return (
@@ -85,13 +94,20 @@ export default function PhotoGalleryModal({
                   style={styles.loader}
                 />
               )}
-              <Image
-                source={{ uri: photo }}
-                style={styles.image}
-                resizeMode="contain"
-                onLoad={() => handleImageLoad(index)}
-                onError={() => handleImageLoad(index)}
-              />
+              {errorImages[index] ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>Failed to load image</Text>
+                  <Text style={styles.errorSubText}>The image may have been deleted or is unavailable</Text>
+                </View>
+              ) : (
+                <Image
+                  source={{ uri: photo }}
+                  style={styles.image}
+                  resizeMode="contain"
+                  onLoad={() => handleImageLoad(index)}
+                  onError={() => handleImageError(index)}
+                />
+              )}
             </View>
           ))}
         </ScrollView>
@@ -168,5 +184,23 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  errorSubText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    textAlign: 'center',
   },
 });
