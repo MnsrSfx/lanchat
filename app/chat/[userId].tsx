@@ -37,7 +37,7 @@ import {
   Flag,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
-import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import Avatar from '@/components/Avatar';
@@ -134,6 +134,8 @@ export default function ChatScreen() {
     const messagesRef = collection(db, 'chats', chatId, 'messages');
     const q = query(messagesRef, orderBy('createdAt', 'desc'));
 
+    let isFirstLoad = true;
+
     const unsubscribe = onSnapshot(q, 
       async (snapshot) => {
         console.log('📥 Received', snapshot.docs.length, 'messages');
@@ -154,6 +156,13 @@ export default function ChatScreen() {
         }).reverse();
         setMessages(fetchedMessages);
 
+        if (isFirstLoad && fetchedMessages.length > 0) {
+          setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: false });
+          }, 100);
+          isFirstLoad = false;
+        }
+
         const unreadMessages = snapshot.docs.filter(doc => {
           const data = doc.data();
           return data.senderId === userId && data.isRead === false;
@@ -161,13 +170,20 @@ export default function ChatScreen() {
 
         if (unreadMessages.length > 0 && db) {
           console.log('📖 Marking', unreadMessages.length, 'messages as read');
-          for (const messageDoc of unreadMessages) {
-            try {
-              const messageRef = doc(db, 'chats', chatId, 'messages', messageDoc.id);
-              await updateDoc(messageRef, { isRead: true });
-            } catch (error) {
-              console.error('❌ Error marking message as read:', error);
-            }
+          const { writeBatch } = await import('firebase/firestore');
+          const dbInstance = db;
+          const batch = writeBatch(dbInstance);
+          
+          unreadMessages.forEach(messageDoc => {
+            const messageRef = doc(dbInstance, 'chats', chatId, 'messages', messageDoc.id);
+            batch.update(messageRef, { isRead: true });
+          });
+
+          try {
+            await batch.commit();
+            console.log('✅ All messages marked as read');
+          } catch (error) {
+            console.error('❌ Error marking messages as read:', error);
           }
         }
       },
@@ -673,7 +689,8 @@ export default function ChatScreen() {
           renderItem={renderMessage}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.messagesList}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={true}
+          persistentScrollbar={true}
         />
 
         {selectedImage && (
