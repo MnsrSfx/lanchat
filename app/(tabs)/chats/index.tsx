@@ -310,20 +310,29 @@ export default function ChatsScreen() {
         </View>
 
         <View style={styles.messageRow}>
-          {item.lastMessage?.type === 'voice' ? (
-            <View style={styles.voiceMessage}>
-              <MessageCircle size={14} color={Colors.light.textSecondary} />
-              <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}>
-                Sesli mesaj ({item.lastMessage.voiceDuration}s)
+          {item.lastMessage ? (
+            item.lastMessage.type === 'voice' ? (
+              <View style={styles.voiceMessage}>
+                <MessageCircle size={14} color={Colors.light.textSecondary} />
+                <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}>
+                  Sesli mesaj ({item.lastMessage.voiceDuration}s)
+                </Text>
+              </View>
+            ) : (
+              <Text 
+                style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}
+                numberOfLines={1}
+              >
+                {item.lastMessage.senderId === currentUser?.uid ? 'Sen: ' : ''}
+                {item.lastMessage.content}
               </Text>
-            </View>
+            )
           ) : (
             <Text 
               style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}
               numberOfLines={1}
             >
-              {item.lastMessage?.senderId === currentUser?.uid ? 'Sen: ' : ''}
-              {item.lastMessage?.content || 'Henüz mesaj yok'}
+              Sesli mesaj (1s)
             </Text>
           )}
           {item.unreadCount > 0 && (

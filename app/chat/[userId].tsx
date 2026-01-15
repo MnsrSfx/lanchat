@@ -163,33 +163,33 @@ export default function ChatScreen() {
             flatListRef.current?.scrollToEnd({ animated: false });
           }, 300);
           isFirstLoadRef.current = false;
+        }
+
+        const unreadMessages = snapshot.docs.filter(doc => {
+          const data = doc.data();
+          return data.senderId === userId && data.isRead === false;
+        });
+
+        if (unreadMessages.length > 0 && isMountedRef.current) {
+          console.log('📖 Marking', unreadMessages.length, 'messages as read');
           
-          const unreadMessages = snapshot.docs.filter(doc => {
-            const data = doc.data();
-            return data.senderId === userId && data.isRead === false;
-          });
+          setTimeout(async () => {
+            if (!db || !isMountedRef.current) return;
+            try {
+              const { writeBatch } = await import('firebase/firestore');
+              const batch = writeBatch(db);
+              
+              unreadMessages.forEach(messageDoc => {
+                const messageRef = doc(db!, 'chats', chatId, 'messages', messageDoc.id);
+                batch.update(messageRef, { isRead: true });
+              });
 
-          if (unreadMessages.length > 0) {
-            console.log('📖 Marking', unreadMessages.length, 'messages as read on mount');
-            
-            setTimeout(async () => {
-              if (!db) return;
-              try {
-                const { writeBatch } = await import('firebase/firestore');
-                const batch = writeBatch(db);
-                
-                unreadMessages.forEach(messageDoc => {
-                  const messageRef = doc(db!, 'chats', chatId, 'messages', messageDoc.id);
-                  batch.update(messageRef, { isRead: true });
-                });
-
-                await batch.commit();
-                console.log('✅ All messages marked as read');
-              } catch (error) {
-                console.error('❌ Error marking messages as read:', error);
-              }
-            }, 500);
-          }
+              await batch.commit();
+              console.log('✅ Messages marked as read');
+            } catch (error) {
+              console.error('❌ Error marking messages as read:', error);
+            }
+          }, 500);
         }
       },
       (error) => {
