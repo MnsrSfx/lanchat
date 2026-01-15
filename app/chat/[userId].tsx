@@ -64,6 +64,7 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isFirstLoadRef = useRef(true);
 
   useEffect(() => {
     if (!userId) {
@@ -128,13 +129,12 @@ export default function ChatScreen() {
       return;
     }
 
+    isFirstLoadRef.current = true;
     const chatId = [currentUser.uid, userId].sort().join('_');
     console.log('📡 Setting up messages listener for chatId:', chatId);
 
     const messagesRef = collection(db, 'chats', chatId, 'messages');
     const q = query(messagesRef, orderBy('createdAt', 'desc'));
-
-    let isFirstLoad = true;
 
     const unsubscribe = onSnapshot(q, 
       async (snapshot) => {
@@ -156,11 +156,11 @@ export default function ChatScreen() {
         }).reverse();
         setMessages(fetchedMessages);
 
-        if (isFirstLoad && fetchedMessages.length > 0) {
+        if (isFirstLoadRef.current && fetchedMessages.length > 0) {
           setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: false });
-          }, 100);
-          isFirstLoad = false;
+          }, 150);
+          isFirstLoadRef.current = false;
         }
 
         const unreadMessages = snapshot.docs.filter(doc => {
@@ -691,6 +691,11 @@ export default function ChatScreen() {
           contentContainerStyle={styles.messagesList}
           showsVerticalScrollIndicator={true}
           persistentScrollbar={true}
+          onContentSizeChange={() => {
+            if (isFirstLoadRef.current) {
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
         />
 
         {selectedImage && (
