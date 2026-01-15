@@ -66,6 +66,8 @@ export default function ChatScreen() {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFirstLoadRef = useRef(true);
   const isMountedRef = useRef(false);
+  const markedMessagesRef = useRef(new Set<string>());
+  const isMarkingRef = useRef(false);
 
   useEffect(() => {
     if (!userId) {
@@ -167,19 +169,27 @@ export default function ChatScreen() {
 
         const unreadMessages = snapshot.docs.filter(doc => {
           const data = doc.data();
-          return data.senderId === userId && data.isRead === false;
+          return data.senderId === userId && 
+                 data.isRead === false && 
+                 !markedMessagesRef.current.has(doc.id);
         });
 
-        if (unreadMessages.length > 0 && isMountedRef.current) {
+        if (unreadMessages.length > 0 && isMountedRef.current && !isMarkingRef.current) {
+          isMarkingRef.current = true;
           console.log('📖 Marking', unreadMessages.length, 'messages as read');
           
           setTimeout(async () => {
-            if (!db || !isMountedRef.current) return;
+            if (!db || !isMountedRef.current) {
+              isMarkingRef.current = false;
+              return;
+            }
+            
             try {
               const { writeBatch } = await import('firebase/firestore');
               const batch = writeBatch(db);
               
               unreadMessages.forEach(messageDoc => {
+                markedMessagesRef.current.add(messageDoc.id);
                 const messageRef = doc(db!, 'chats', chatId, 'messages', messageDoc.id);
                 batch.update(messageRef, { isRead: true });
               });
@@ -188,6 +198,8 @@ export default function ChatScreen() {
               console.log('✅ Messages marked as read');
             } catch (error) {
               console.error('❌ Error marking messages as read:', error);
+            } finally {
+              isMarkingRef.current = false;
             }
           }, 500);
         }
@@ -200,6 +212,9 @@ export default function ChatScreen() {
     return () => {
       console.log('🔌 Cleaning up messages listener');
       isMountedRef.current = false;
+      isMarkingRef.current = false;
+      const markedMessages = markedMessagesRef.current;
+      markedMessages.clear();
       unsubscribe();
     };
   }, [userId, currentUser?.uid]);
