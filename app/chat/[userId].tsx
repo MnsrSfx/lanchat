@@ -65,6 +65,7 @@ export default function ChatScreen() {
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFirstLoadRef = useRef(true);
+  const isMountedRef = useRef(false);
 
   useEffect(() => {
     if (!userId) {
@@ -129,6 +130,7 @@ export default function ChatScreen() {
       return;
     }
 
+    isMountedRef.current = true;
     isFirstLoadRef.current = true;
     const chatId = [currentUser.uid, userId].sort().join('_');
     console.log('📡 Setting up messages listener for chatId:', chatId);
@@ -159,31 +161,34 @@ export default function ChatScreen() {
         if (isFirstLoadRef.current && fetchedMessages.length > 0) {
           setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: false });
-          }, 150);
+          }, 300);
           isFirstLoadRef.current = false;
-        }
-
-        const unreadMessages = snapshot.docs.filter(doc => {
-          const data = doc.data();
-          return data.senderId === userId && data.isRead === false;
-        });
-
-        if (unreadMessages.length > 0 && db) {
-          console.log('📖 Marking', unreadMessages.length, 'messages as read');
-          const { writeBatch } = await import('firebase/firestore');
-          const dbInstance = db;
-          const batch = writeBatch(dbInstance);
           
-          unreadMessages.forEach(messageDoc => {
-            const messageRef = doc(dbInstance, 'chats', chatId, 'messages', messageDoc.id);
-            batch.update(messageRef, { isRead: true });
+          const unreadMessages = snapshot.docs.filter(doc => {
+            const data = doc.data();
+            return data.senderId === userId && data.isRead === false;
           });
 
-          try {
-            await batch.commit();
-            console.log('✅ All messages marked as read');
-          } catch (error) {
-            console.error('❌ Error marking messages as read:', error);
+          if (unreadMessages.length > 0) {
+            console.log('📖 Marking', unreadMessages.length, 'messages as read on mount');
+            
+            setTimeout(async () => {
+              if (!db) return;
+              try {
+                const { writeBatch } = await import('firebase/firestore');
+                const batch = writeBatch(db);
+                
+                unreadMessages.forEach(messageDoc => {
+                  const messageRef = doc(db!, 'chats', chatId, 'messages', messageDoc.id);
+                  batch.update(messageRef, { isRead: true });
+                });
+
+                await batch.commit();
+                console.log('✅ All messages marked as read');
+              } catch (error) {
+                console.error('❌ Error marking messages as read:', error);
+              }
+            }, 500);
           }
         }
       },
@@ -194,6 +199,7 @@ export default function ChatScreen() {
 
     return () => {
       console.log('🔌 Cleaning up messages listener');
+      isMountedRef.current = false;
       unsubscribe();
     };
   }, [userId, currentUser?.uid]);
@@ -692,8 +698,15 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={true}
           persistentScrollbar={true}
           onContentSizeChange={() => {
-            if (isFirstLoadRef.current) {
-              flatListRef.current?.scrollToEnd({ animated: false });
+            if (!isFirstLoadRef.current && messages.length > 0) {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }
+          }}
+          onLayout={() => {
+            if (isFirstLoadRef.current && messages.length > 0) {
+              setTimeout(() => {
+                flatListRef.current?.scrollToEnd({ animated: false });
+              }, 100);
             }
           }}
         />
