@@ -108,6 +108,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     
     let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
     let appStateSubscription: any = null;
+    let beforeUnloadHandler: (() => void) | null = null;
+    let currentUserId: string | null = null;
     
     const setUserOnlineStatus = async (uid: string, isOnline: boolean) => {
       try {
@@ -123,11 +125,25 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     };
     
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+      }
+      if (appStateSubscription) {
+        appStateSubscription.remove();
+        appStateSubscription = null;
+      }
+      if (beforeUnloadHandler && Platform.OS === 'web') {
+        window.removeEventListener('beforeunload', beforeUnloadHandler);
+        beforeUnloadHandler = null;
+      }
+      
       if (firebaseUser) {
         const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
         if (stored) {
           const parsed: StoredAuth = JSON.parse(stored);
           if (parsed.user) {
+            currentUserId = firebaseUser.uid;
             await setUserOnlineStatus(firebaseUser.uid, true);
             
             heartbeatInterval = setInterval(async () => {
@@ -139,15 +155,15 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             }, 30000);
             
             if (Platform.OS === 'web') {
-              const handleBeforeUnload = async () => {
-                await setUserOnlineStatus(firebaseUser.uid, false);
+              beforeUnloadHandler = () => {
+                const userRef = doc(firebaseDb, 'users', firebaseUser.uid);
+                setDoc(userRef, {
+                  isOnline: false,
+                  lastSeen: serverTimestamp(),
+                }, { merge: true }).catch(err => console.error('Offline update error:', err));
               };
               
-              window.addEventListener('beforeunload', handleBeforeUnload);
-              
-              return () => {
-                window.removeEventListener('beforeunload', handleBeforeUnload);
-              };
+              window.addEventListener('beforeunload', beforeUnloadHandler);
             } else {
               const handleAppStateChange = async (nextAppState: AppStateStatus) => {
                 console.log('📱 App state changed:', nextAppState);
@@ -164,23 +180,27 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           }
         }
       } else {
-        if (heartbeatInterval) {
-          clearInterval(heartbeatInterval);
-          heartbeatInterval = null;
-        }
-        if (appStateSubscription) {
-          appStateSubscription.remove();
-          appStateSubscription = null;
-        }
+        currentUserId = null;
       }
     });
 
     return () => {
+      console.log('🧹 Cleaning up presence system');
+      
+      if (currentUserId && firebaseDb) {
+        setUserOnlineStatus(currentUserId, false).catch(err => 
+          console.error('Error setting offline on cleanup:', err)
+        );
+      }
+      
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
       }
       if (appStateSubscription) {
         appStateSubscription.remove();
+      }
+      if (beforeUnloadHandler && Platform.OS === 'web') {
+        window.removeEventListener('beforeunload', beforeUnloadHandler);
       }
       if (unsubscribe) {
         unsubscribe();
