@@ -17,7 +17,8 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  sendEmailVerification
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -351,6 +352,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           displayName: name,
         });
 
+        console.log('Sending email verification...');
+        await sendEmailVerification(firebaseUser);
+        console.log('Email verification sent successfully');
+
         const user: User = {
           id: firebaseUser.uid,
           uid: firebaseUser.uid,
@@ -444,24 +449,29 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     },
   });
 
-  const verifyEmailMutation = useMutation({
-    mutationFn: async (code: string) => {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      if (code.length !== 6) {
-        throw new Error('Invalid verification code');
+  const checkEmailVerificationMutation = useMutation({
+    mutationFn: async () => {
+      if (!firebaseAuth?.currentUser) {
+        throw new Error('No user is currently signed in');
       }
-      const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-      if (stored) {
-        const parsed: StoredAuth = JSON.parse(stored);
-        parsed.needsEmailVerification = false;
-        parsed.isAuthenticated = true;
-        if (parsed.user) {
-          parsed.user.isVerified = true;
+      
+      await firebaseAuth.currentUser.reload();
+      
+      if (firebaseAuth.currentUser.emailVerified) {
+        const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+        if (stored) {
+          const parsed: StoredAuth = JSON.parse(stored);
+          parsed.needsEmailVerification = false;
+          parsed.isAuthenticated = true;
+          if (parsed.user) {
+            parsed.user.isVerified = true;
+          }
+          await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(parsed));
+          return parsed;
         }
-        await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(parsed));
-        return parsed;
       }
-      throw new Error('No user found');
+      
+      throw new Error('Email is not verified yet');
     },
     onSuccess: (data) => {
       setNeedsEmailVerification(false);
@@ -659,9 +669,27 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const resendVerificationMutation = useMutation({
     mutationFn: async () => {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log('Verification code resent to:', verificationEmail);
-      return true;
+      if (!firebaseAuth?.currentUser) {
+        throw new Error('No user is currently signed in');
+      }
+      
+      try {
+        await sendEmailVerification(firebaseAuth.currentUser);
+        console.log('Verification email resent successfully');
+        return true;
+      } catch (error: any) {
+        console.error('Resend verification error:', error);
+        
+        let userFriendlyMessage = 'Failed to resend verification email.';
+        
+        if (error.code === 'auth/too-many-requests') {
+          userFriendlyMessage = 'Too many requests. Please wait a moment before trying again.';
+        } else if (error.message) {
+          userFriendlyMessage = error.message;
+        }
+        
+        throw new Error(userFriendlyMessage);
+      }
     },
   });
 
@@ -870,7 +898,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     login: loginMutation.mutate,
     register: registerMutation.mutate,
     loginWithGoogle: googleLoginMutation.mutate,
-    verifyEmail: verifyEmailMutation.mutate,
+    checkEmailVerification: checkEmailVerificationMutation.mutate,
     updateProfile: updateProfileMutation.mutate,
     logout: logoutMutation.mutate,
     resendVerification: resendVerificationMutation.mutate,
@@ -878,14 +906,17 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     isLoginLoading: loginMutation.isPending,
     isRegisterLoading: registerMutation.isPending,
     isGoogleLoading: googleLoginMutation.isPending,
-    isVerifyLoading: verifyEmailMutation.isPending,
+    isCheckVerificationLoading: checkEmailVerificationMutation.isPending,
     isUpdateLoading: updateProfileMutation.isPending,
     isResetPasswordLoading: resetPasswordMutation.isPending,
+    isResendVerificationLoading: resendVerificationMutation.isPending,
     loginError: loginMutation.error?.message,
     registerError: registerMutation.error?.message,
     googleError: googleLoginMutation.error?.message,
-    verifyError: verifyEmailMutation.error?.message,
+    checkVerificationError: checkEmailVerificationMutation.error?.message,
+    resendVerificationError: resendVerificationMutation.error?.message,
     resetPasswordError: resetPasswordMutation.error?.message,
     resetPasswordSuccess: resetPasswordMutation.isSuccess,
+    resendVerificationSuccess: resendVerificationMutation.isSuccess,
   };
 });

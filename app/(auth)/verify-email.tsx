@@ -1,26 +1,32 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Mail, ArrowLeft, RefreshCw } from 'lucide-react-native';
+import { Mail, CheckCircle, RefreshCw } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import Colors from '@/constants/colors';
 
 export default function VerifyEmailScreen() {
-  const { verifyEmail, resendVerification, verificationEmail, isVerifyLoading, verifyError } = useAuth();
-  const [code, setCode] = useState(['', '', '', '', '', '']);
+  const { 
+    checkEmailVerification, 
+    resendVerification, 
+    verificationEmail, 
+    isCheckVerificationLoading, 
+    checkVerificationError,
+    isResendVerificationLoading,
+    resendVerificationError,
+    resendVerificationSuccess,
+    isAuthenticated,
+    needsProfileSetup
+  } = useAuth();
   const [resendTimer, setResendTimer] = useState(60);
   const [canResend, setCanResend] = useState(false);
-  const inputRefs = useRef<TextInput[]>([]);
 
   useEffect(() => {
     if (resendTimer > 0) {
@@ -31,137 +37,140 @@ export default function VerifyEmailScreen() {
     }
   }, [resendTimer]);
 
-  const handleCodeChange = (text: string, index: number) => {
-    const newCode = [...code];
-    
-    if (text.length > 1) {
-      const pastedCode = text.slice(0, 6).split('');
-      pastedCode.forEach((char, i) => {
-        if (i < 6) newCode[i] = char;
-      });
-      setCode(newCode);
-      inputRefs.current[5]?.focus();
-    } else {
-      newCode[index] = text;
-      setCode(newCode);
-      
-      if (text && index < 5) {
-        inputRefs.current[index + 1]?.focus();
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log('Email verified, redirecting...', { needsProfileSetup });
+      if (needsProfileSetup) {
+        router.replace('/profile-setup');
+      } else {
+        router.replace('/(tabs)/community');
       }
     }
-  };
+  }, [isAuthenticated, needsProfileSetup]);
 
-  const handleKeyPress = (e: any, index: number) => {
-    if (e.nativeEvent.key === 'Backspace' && !code[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
+  useEffect(() => {
+    if (resendVerificationSuccess) {
+      setResendTimer(60);
+      setCanResend(false);
     }
-  };
+  }, [resendVerificationSuccess]);
 
-  const handleVerify = () => {
-    const fullCode = code.join('');
-    if (fullCode.length === 6) {
-      verifyEmail(fullCode);
-    }
+  const handleCheckVerification = () => {
+    checkEmailVerification();
   };
 
   const handleResend = () => {
     if (canResend) {
       resendVerification();
-      setResendTimer(60);
-      setCanResend(false);
     }
   };
-
-  const isCodeComplete = code.every(digit => digit !== '');
 
   return (
     <LinearGradient
       colors={['#0EA5E9', '#0284C7', '#0369A1']}
       style={styles.container}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
-        <View style={styles.content}>
+      <View style={styles.content}>
+        <View style={styles.iconContainer}>
+          <Mail size={64} color="#fff" strokeWidth={1.5} />
+        </View>
+
+        <Text style={styles.title}>Verify Your Email</Text>
+        <Text style={styles.subtitle}>
+          A verification link has been sent to
+        </Text>
+        <Text style={styles.email}>{verificationEmail || 'your email'}</Text>
+
+        <View style={styles.card}>
+          <View style={styles.instructionsContainer}>
+            <View style={styles.instructionItem}>
+              <View style={styles.stepNumber}>
+                <Text style={styles.stepNumberText}>1</Text>
+              </View>
+              <Text style={styles.instructionText}>
+                Check your email inbox (and spam folder)
+              </Text>
+            </View>
+
+            <View style={styles.instructionItem}>
+              <View style={styles.stepNumber}>
+                <Text style={styles.stepNumberText}>2</Text>
+              </View>
+              <Text style={styles.instructionText}>
+                Click the verification link in the email
+              </Text>
+            </View>
+
+            <View style={styles.instructionItem}>
+              <View style={styles.stepNumber}>
+                <Text style={styles.stepNumberText}>3</Text>
+              </View>
+              <Text style={styles.instructionText}>
+                Return here and click the button below
+              </Text>
+            </View>
+          </View>
+
+          {checkVerificationError && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBannerText}>{checkVerificationError}</Text>
+            </View>
+          )}
+
+          {resendVerificationError && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBannerText}>{resendVerificationError}</Text>
+            </View>
+          )}
+
+          {resendVerificationSuccess && (
+            <View style={styles.successBanner}>
+              <CheckCircle size={16} color="#10B981" />
+              <Text style={styles.successBannerText}>Verification email sent!</Text>
+            </View>
+          )}
+
           <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
+            style={[
+              styles.verifyButton,
+              isCheckVerificationLoading && styles.verifyButtonDisabled,
+            ]}
+            onPress={handleCheckVerification}
+            disabled={isCheckVerificationLoading}
+            testID="check-verification-button"
           >
-            <ArrowLeft size={24} color="#fff" />
+            {isCheckVerificationLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.verifyButtonText}>I&apos;ve verified my email</Text>
+            )}
           </TouchableOpacity>
 
-          <View style={styles.iconContainer}>
-            <Mail size={48} color="#fff" strokeWidth={1.5} />
-          </View>
+          <View style={styles.divider} />
 
-          <Text style={styles.title}>Verify Your Email</Text>
-          <Text style={styles.subtitle}>
-            We&apos;ve sent a 6-digit verification code to
-          </Text>
-          <Text style={styles.email}>{verificationEmail || 'your email'}</Text>
-
-          <View style={styles.card}>
-            {verifyError && (
-              <View style={styles.errorBanner}>
-                <Text style={styles.errorBannerText}>{verifyError}</Text>
-              </View>
+          <View style={styles.resendContainer}>
+            <Text style={styles.resendText}>Didn&apos;t receive the email? </Text>
+            {canResend ? (
+              <TouchableOpacity 
+                onPress={handleResend} 
+                style={styles.resendButton}
+                disabled={isResendVerificationLoading}
+              >
+                {isResendVerificationLoading ? (
+                  <ActivityIndicator size="small" color={Colors.light.tint} />
+                ) : (
+                  <>
+                    <RefreshCw size={14} color={Colors.light.tint} />
+                    <Text style={styles.resendLink}>Resend</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.timerText}>Resend in {resendTimer}s</Text>
             )}
-
-            <View style={styles.codeContainer}>
-              {code.map((digit, index) => (
-                <TextInput
-                  key={index}
-                  ref={(ref) => { if (ref) inputRefs.current[index] = ref; }}
-                  style={[
-                    styles.codeInput,
-                    digit && styles.codeInputFilled,
-                  ]}
-                  value={digit}
-                  onChangeText={(text) => handleCodeChange(text, index)}
-                  onKeyPress={(e) => handleKeyPress(e, index)}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  selectTextOnFocus
-                  testID={`code-input-${index}`}
-                />
-              ))}
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.verifyButton,
-                (!isCodeComplete || isVerifyLoading) && styles.verifyButtonDisabled,
-              ]}
-              onPress={handleVerify}
-              disabled={!isCodeComplete || isVerifyLoading}
-              testID="verify-button"
-            >
-              {isVerifyLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.verifyButtonText}>Verify Email</Text>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.resendContainer}>
-              <Text style={styles.resendText}>Didn&apos;t receive the code? </Text>
-              {canResend ? (
-                <TouchableOpacity onPress={handleResend} style={styles.resendButton}>
-                  <RefreshCw size={14} color={Colors.light.tint} />
-                  <Text style={styles.resendLink}>Resend</Text>
-                </TouchableOpacity>
-              ) : (
-                <Text style={styles.timerText}>Resend in {resendTimer}s</Text>
-              )}
-            </View>
           </View>
-
-          <Text style={styles.hint}>
-            For demo purposes, enter any 6 digits to verify
-          </Text>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </LinearGradient>
   );
 }
@@ -170,29 +179,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  keyboardView: {
-    flex: 1,
-  },
   content: {
     flex: 1,
     padding: 24,
-    paddingTop: 60,
+    paddingTop: 80,
     alignItems: 'center',
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    marginBottom: 32,
   },
   iconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -226,6 +222,34 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 8,
   },
+  instructionsContainer: {
+    marginBottom: 24,
+  },
+  instructionItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  stepNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.light.tint,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  stepNumberText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700' as const,
+  },
+  instructionText: {
+    flex: 1,
+    fontSize: 15,
+    color: Colors.light.text,
+    lineHeight: 22,
+  },
   errorBanner: {
     backgroundColor: Colors.light.errorLight,
     padding: 12,
@@ -237,26 +261,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
-  codeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  codeInput: {
-    width: 46,
-    height: 56,
+  successBanner: {
+    backgroundColor: '#D1FAE5',
+    padding: 12,
     borderRadius: 12,
-    backgroundColor: Colors.light.surfaceSecondary,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    fontSize: 24,
-    fontWeight: '700' as const,
-    textAlign: 'center',
-    color: Colors.light.text,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  codeInputFilled: {
-    borderColor: Colors.light.tint,
-    backgroundColor: Colors.light.tintLight,
+  successBannerText: {
+    color: '#065F46',
+    fontSize: 14,
+    fontWeight: '500' as const,
   },
   verifyButton: {
     backgroundColor: Colors.light.tint,
@@ -266,12 +284,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   verifyButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.7,
   },
   verifyButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600' as const,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.light.border,
+    marginVertical: 20,
   },
   resendContainer: {
     flexDirection: 'row',
@@ -297,11 +320,5 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     fontSize: 14,
     fontWeight: '500' as const,
-  },
-  hint: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginTop: 24,
-    textAlign: 'center',
   },
 });
