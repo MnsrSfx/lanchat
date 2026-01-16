@@ -15,7 +15,7 @@ const queryClient = new QueryClient({
 });
 
 function RootLayoutNav() {
-  const { isAuthenticated, isLoading, needsProfileSetup, needsEmailVerification } = useAuth();
+  const { isAuthenticated, isLoading, needsProfileSetup, needsEmailVerification, user } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
@@ -29,13 +29,13 @@ function RootLayoutNav() {
         const inAuth = segments[0] === '(auth)';
         const inProfileSetup = segments[0] === 'profile-setup';
 
-        if (!isAuthenticated && !needsEmailVerification) {
+        if (needsEmailVerification && user) {
+          router.replace('/(auth)/verify-email');
+        } else if (!isAuthenticated && !user) {
           if (!inAuth) {
             router.replace('/(auth)/login');
           }
-        } else if (needsEmailVerification) {
-          router.replace('/(auth)/verify-email');
-        } else if (needsProfileSetup && !inProfileSetup) {
+        } else if (needsProfileSetup && !inProfileSetup && isAuthenticated) {
           router.replace('/profile-setup');
         } else if (isAuthenticated && !needsProfileSetup && inAuth) {
           router.replace('/(tabs)/community');
@@ -48,7 +48,7 @@ function RootLayoutNav() {
     };
 
     navigate();
-  }, [isAuthenticated, isLoading, needsEmailVerification, needsProfileSetup, segments, isNavigating, router]);
+  }, [isAuthenticated, isLoading, needsEmailVerification, needsProfileSetup, user, segments, isNavigating, router]);
 
   if (isLoading) {
     return (
