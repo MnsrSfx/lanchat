@@ -28,16 +28,22 @@ function RootLayoutNav() {
         setIsNavigating(true);
         const inAuth = segments[0] === '(auth)';
         const inProfileSetup = segments[0] === 'profile-setup';
+        const inVerifyEmail = segments[0] === '(auth)' && segments[1] === 'verify-email';
+        const inTabs = segments[0] === '(tabs)';
 
-        if (needsEmailVerification && user) {
+        console.log('Navigation check:', { isAuthenticated, needsEmailVerification, needsProfileSetup, user: !!user, segments });
+
+        if (!isAuthenticated && !needsEmailVerification && !inAuth) {
+          console.log('Not authenticated, redirecting to login');
+          router.replace('/(auth)/login');
+        } else if (needsEmailVerification && user && !inVerifyEmail) {
+          console.log('Email not verified, redirecting to verify-email');
           router.replace('/(auth)/verify-email');
-        } else if (!isAuthenticated && !user) {
-          if (!inAuth) {
-            router.replace('/(auth)/login');
-          }
-        } else if (needsProfileSetup && !inProfileSetup && isAuthenticated) {
+        } else if (isAuthenticated && needsProfileSetup && !inProfileSetup) {
+          console.log('Profile setup needed, redirecting');
           router.replace('/profile-setup');
-        } else if (isAuthenticated && !needsProfileSetup && inAuth) {
+        } else if (isAuthenticated && !needsProfileSetup && !needsEmailVerification && (inAuth || (!inTabs && segments[0] === undefined))) {
+          console.log('Authenticated and ready, redirecting to community');
           router.replace('/(tabs)/community');
         }
       } catch (error) {

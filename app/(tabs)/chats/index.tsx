@@ -37,15 +37,15 @@ interface ChatItem {
 }
 
 export default function ChatsScreen() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isAuthenticated } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!currentUser?.uid || !db) {
-      console.log('⚠️ No current user or db, skipping chats listener');
+    if (!isAuthenticated || !currentUser?.uid || !db) {
+      console.log('⚠️ Not authenticated or no current user or db, skipping chats listener');
       setLoading(false);
       return;
     }
@@ -214,7 +214,7 @@ export default function ChatsScreen() {
       messageListenersMap.forEach(unsubscribe => unsubscribe());
       messageListenersMap.clear();
     };
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, isAuthenticated]);
 
   const filteredChats = chats.filter(chat => 
     chat.otherUser.name.toLowerCase().includes(searchQuery.toLowerCase())
