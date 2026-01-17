@@ -226,7 +226,7 @@ export default function ChatsScreen() {
     const days = Math.floor(diff / 86400000);
 
     if (days === 0) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (days === 1) return 'Dün';
+    if (days === 1) return 'Yesterday';
     if (days < 7) return date.toLocaleDateString([], { weekday: 'short' });
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
@@ -242,15 +242,15 @@ export default function ChatsScreen() {
 
   const handleDeleteChat = async (chatId: string, userName: string) => {
     Alert.alert(
-      'Sohbeti Sil',
-      `${userName} ile olan tüm sohbet silinecek. Emin misiniz?`,
+      'Delete Chat',
+      `All messages with ${userName} will be deleted. Are you sure?`,
       [
         {
-          text: 'İptal',
+          text: 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Sil',
+          text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -275,7 +275,7 @@ export default function ChatsScreen() {
               setChats(prevChats => prevChats.filter(chat => chat.id !== chatId));
             } catch (error) {
               console.error('❌ Error deleting chat:', error);
-              Alert.alert('Hata', 'Sohbet silinirken bir hata oluştu.');
+              Alert.alert('Error', 'An error occurred while deleting the chat.');
             }
           },
         },
@@ -315,7 +315,7 @@ export default function ChatsScreen() {
               <View style={styles.voiceMessage}>
                 <MessageCircle size={14} color={Colors.light.textSecondary} />
                 <Text style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}>
-                  Sesli mesaj ({item.lastMessage.voiceDuration}s)
+                  Voice message ({item.lastMessage.voiceDuration}s)
                 </Text>
               </View>
             ) : (
@@ -323,7 +323,7 @@ export default function ChatsScreen() {
                 style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}
                 numberOfLines={1}
               >
-                {item.lastMessage.senderId === currentUser?.uid ? 'Sen: ' : ''}
+                {item.lastMessage.senderId === currentUser?.uid ? 'You: ' : ''}
                 {item.lastMessage.content}
               </Text>
             )
@@ -332,7 +332,7 @@ export default function ChatsScreen() {
               style={[styles.lastMessage, item.unreadCount > 0 && styles.lastMessageUnread]}
               numberOfLines={1}
             >
-              Sesli mesaj (1s)
+              Voice message (1s)
             </Text>
           )}
           {item.unreadCount > 0 && (
@@ -381,7 +381,7 @@ export default function ChatsScreen() {
           <Search size={20} color={Colors.light.textSecondary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Konuşmaları ara..."
+            placeholder="Search conversations..."
             placeholderTextColor={Colors.light.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -398,13 +398,13 @@ export default function ChatsScreen() {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>Henüz konuşma yok</Text>
-            <Text style={styles.emptyText}>Dil partnerleriyle sohbet etmeye başla</Text>
+            <Text style={styles.emptyTitle}>No conversations yet</Text>
+            <Text style={styles.emptyText}>Start chatting with language partners</Text>
             <TouchableOpacity 
               style={styles.findButton}
               onPress={() => router.push('/(tabs)/community')}
             >
-              <Text style={styles.findButtonText}>Partner Bul</Text>
+              <Text style={styles.findButtonText}>Find Partners</Text>
             </TouchableOpacity>
           </View>
         }
