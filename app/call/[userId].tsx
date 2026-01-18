@@ -4,8 +4,8 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,29 +16,74 @@ import {
   MicOff, 
   Volume2, 
   VolumeX,
-  Video,
-  VideoOff,
-  RotateCcw,
 } from 'lucide-react-native';
-import { MOCK_USERS } from '@/mocks/users';
+import { db } from '@/src/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import Colors from '@/constants/colors';
+import { User } from '@/types';
+import Avatar from '@/components/Avatar';
 
 export default function CallScreen() {
-  const { userId, type } = useLocalSearchParams<{ userId: string; type: 'voice' | 'video' }>();
-  const user = MOCK_USERS.find(u => u.id === userId);
-  const isVideo = type === 'video';
-  
+  const { userId } = useLocalSearchParams<{ userId: string }>();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [callStatus, setCallStatus] = useState<'calling' | 'connected' | 'ended'>('calling');
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(false);
-  const [isVideoEnabled, setIsVideoEnabled] = useState(isVideo);
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (callStatus === 'calling') {
+    if (!userId || !db) {
+      console.error('❌ No userId or db not initialized');
+      setLoading(false);
+      return;
+    }
+
+    console.log('📡 Fetching user for call:', userId);
+    const userDocRef = doc(db, 'users', userId);
+    
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      (userDoc) => {
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setUser({
+            id: userDoc.id,
+            uid: data.uid,
+            email: data.email || '',
+            name: data.displayName || data.email?.split('@')[0] || 'Unknown User',
+            avatar: data.photoURL || '',
+            photos: data.photos || [],
+            bio: data.bio || '',
+            nativeLanguage: data.nativeLanguage || { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
+            learningLanguages: data.learningLanguages || [],
+            isOnline: data.isOnline || false,
+            lastSeen: data.lastSeen?.toDate() || new Date(),
+            country: data.country || '',
+            city: data.city || '',
+            age: data.age || 0,
+            isVerified: data.isVerified || false,
+            createdAt: data.createdAt?.toDate() || new Date(),
+          });
+        } else {
+          console.error('❌ User not found:', userId);
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error('❌ Error fetching user:', error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [userId]);
+
+  useEffect(() => {
+    if (callStatus === 'calling' && user) {
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
@@ -64,7 +109,7 @@ export default function CallScreen() {
       pulseAnim.stopAnimation();
       pulseAnim.setValue(1);
     }
-  }, [callStatus, pulseAnim]);
+  }, [callStatus, pulseAnim, user]);
 
   useEffect(() => {
     if (callStatus === 'connected') {
@@ -80,11 +125,25 @@ export default function CallScreen() {
     };
   }, [callStatus]);
 
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centerContent]}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <ActivityIndicator size="large" color={Colors.light.tint} />
+        <Text style={styles.loadingText}>Connecting...</Text>
+      </SafeAreaView>
+    );
+  }
+
   if (!user) {
     return (
-      <View style={styles.container}>
-        <Text>User not found</Text>
-      </View>
+      <SafeAreaView style={[styles.container, styles.centerContent]}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Text style={styles.errorText}>User not found</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
     );
   }
 
@@ -112,50 +171,29 @@ export default function CallScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const toggleVideo = () => {
-    setIsVideoEnabled(!isVideoEnabled);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
   return (
-    <SafeAreaView style={[styles.container, isVideo && styles.videoContainer]}>
+    <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
-      
-      {isVideo && isVideoEnabled && (
-        <View style={styles.videoBackground}>
-          <Image source={{ uri: user.avatar }} style={styles.videoFeed} blurRadius={20} />
-          <View style={styles.videoOverlay} />
-        </View>
-      )}
 
       <View style={styles.content}>
         <View style={styles.userInfo}>
           {callStatus === 'calling' ? (
             <Animated.View style={[styles.avatarWrapper, { transform: [{ scale: pulseAnim }] }]}>
               <View style={styles.pulseRing} />
-              <Image source={{ uri: user.avatar }} style={styles.avatar} />
+              <Avatar uri={user.avatar} name={user.name} size={120} />
             </Animated.View>
           ) : (
-            <Image source={{ uri: user.avatar }} style={styles.avatar} />
+            <Avatar uri={user.avatar} name={user.name} size={120} />
           )}
           
-          <Text style={[styles.userName, isVideo && styles.userNameLight]}>
+          <Text style={styles.userName}>
             {user.name}
           </Text>
           
-          <Text style={[styles.callStatus, isVideo && styles.callStatusLight]}>
+          <Text style={styles.callStatus}>
             {callStatus === 'calling' ? 'Calling...' : callStatus === 'connected' ? formatDuration(duration) : 'Call ended'}
           </Text>
         </View>
-
-        {isVideo && isVideoEnabled && (
-          <View style={styles.selfVideoContainer}>
-            <Image source={{ uri: 'https://images.unsplash.com/photo-1599566150163-29194dcabd36?w=200&h=200&fit=crop' }} style={styles.selfVideo} />
-            <TouchableOpacity style={styles.flipCamera}>
-              <RotateCcw size={16} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        )}
 
         <View style={styles.controls}>
           <View style={styles.controlsRow}>
@@ -186,22 +224,6 @@ export default function CallScreen() {
                 Speaker
               </Text>
             </TouchableOpacity>
-
-            {isVideo && (
-              <TouchableOpacity
-                style={[styles.controlButton, !isVideoEnabled && styles.controlButtonActive]}
-                onPress={toggleVideo}
-              >
-                {isVideoEnabled ? (
-                  <Video size={24} color={Colors.light.text} />
-                ) : (
-                  <VideoOff size={24} color="#fff" />
-                )}
-                <Text style={[styles.controlLabel, !isVideoEnabled && styles.controlLabelActive]}>
-                  {isVideoEnabled ? 'Stop' : 'Start'}
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
 
           <TouchableOpacity style={styles.endCallButton} onPress={handleEndCall}>
@@ -218,19 +240,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.light.background,
   },
-  videoContainer: {
-    backgroundColor: '#1A1A2E',
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  videoBackground: {
-    ...StyleSheet.absoluteFillObject,
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.light.textSecondary,
   },
-  videoFeed: {
-    width: '100%',
-    height: '100%',
+  errorText: {
+    fontSize: 18,
+    color: Colors.light.textSecondary,
+    marginBottom: 16,
   },
-  videoOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+  backButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 8,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600' as const,
   },
   content: {
     flex: 1,
@@ -253,55 +286,16 @@ const styles = StyleSheet.create({
     top: -10,
     left: -10,
   },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 4,
-    borderColor: '#fff',
-  },
   userName: {
     fontSize: 28,
     fontWeight: '700' as const,
     color: Colors.light.text,
     marginTop: 20,
   },
-  userNameLight: {
-    color: '#fff',
-  },
   callStatus: {
     fontSize: 16,
     color: Colors.light.textSecondary,
     marginTop: 8,
-  },
-  callStatusLight: {
-    color: 'rgba(255,255,255,0.8)',
-  },
-  selfVideoContainer: {
-    position: 'absolute',
-    top: 100,
-    right: 20,
-    width: 100,
-    height: 140,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  selfVideo: {
-    width: '100%',
-    height: '100%',
-  },
-  flipCamera: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   controls: {
     paddingHorizontal: 40,

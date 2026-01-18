@@ -27,7 +27,6 @@ import {
   Mic, 
   Image as ImageIcon, 
   Phone, 
-  Video, 
   X,
   Play,
   StopCircle,
@@ -136,6 +135,7 @@ export default function ChatScreen() {
 
     isMountedRef.current = true;
     isFirstLoadRef.current = true;
+    const markedMessages = markedMessagesRef.current;
     const chatId = [currentUser.uid, userId].sort().join('_');
     console.log('📡 Setting up messages listener for chatId:', chatId);
 
@@ -215,7 +215,6 @@ export default function ChatScreen() {
       console.log('🔌 Cleaning up messages listener');
       isMountedRef.current = false;
       isMarkingRef.current = false;
-      const markedMessages = markedMessagesRef.current;
       markedMessages.clear();
       unsubscribe();
     };
@@ -693,20 +692,12 @@ export default function ChatScreen() {
             </TouchableOpacity>
           ),
           headerRight: () => (
-            <View style={styles.headerActions}>
-              <TouchableOpacity 
-                style={styles.headerButton}
-                onPress={() => router.push(`/call/${user.id}?type=voice` as any)}
-              >
-                <Phone size={20} color={Colors.light.tint} />
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.headerButton}
-                onPress={() => router.push(`/call/${user.id}?type=video` as any)}
-              >
-                <Video size={20} color={Colors.light.tint} />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={() => router.push(`/call/${user.id}` as any)}
+            >
+              <Phone size={20} color={Colors.light.tint} />
+            </TouchableOpacity>
           ),
         }}
       />
