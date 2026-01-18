@@ -35,6 +35,8 @@ import {
   Trash2,
   Languages,
   Flag,
+  Check,
+  CheckCheck,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
 import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot } from 'firebase/firestore';
@@ -651,9 +653,20 @@ export default function ChatScreen() {
               {item.content}
             </Text>
           )}
-          <Text style={[styles.messageTime, isOwn && styles.messageTimeOwn]}>
-            {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
+          <View style={styles.messageFooter}>
+            <Text style={[styles.messageTime, isOwn && styles.messageTimeOwn]}>
+              {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+            {isOwn && (
+              <View style={styles.tickContainer}>
+                {item.isRead ? (
+                  <CheckCheck size={14} color="#34B7F1" />
+                ) : (
+                  <Check size={14} color="rgba(255,255,255,0.7)" />
+                )}
+              </View>
+            )}
+          </View>
         </Pressable>
       </View>
     );
@@ -935,14 +948,22 @@ const styles = StyleSheet.create({
   messageTextOwn: {
     color: '#fff',
   },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+    gap: 4,
+  },
   messageTime: {
     fontSize: 10,
     color: Colors.light.textSecondary,
-    marginTop: 4,
-    alignSelf: 'flex-end',
   },
   messageTimeOwn: {
     color: 'rgba(255,255,255,0.7)',
+  },
+  tickContainer: {
+    marginLeft: 2,
   },
   messageImage: {
     width: 200,
