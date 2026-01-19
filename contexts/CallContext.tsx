@@ -35,9 +35,12 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const playRingtone = useCallback(async () => {
-    if (Platform.OS === 'web') return;
-    
     try {
+      if (Platform.OS === 'web') {
+        console.log('🔔 Web platform - ringtone skipped but call modal should show');
+        return;
+      }
+      
       const player = createAudioPlayer(
         { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' }
       );
@@ -79,17 +82,19 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      console.log('📞 Incoming call snapshot received, docs:', snapshot.docs.length);
+      
       if (snapshot.empty) {
-        console.log('📞 No incoming calls');
-        if (incomingCall) {
-          stopRingtone();
-          setIncomingCall(null);
-        }
+        console.log('📞 No incoming calls - clearing state');
+        stopRingtone();
+        setIncomingCall(null);
         return;
       }
 
       const callDoc = snapshot.docs[0];
       const data = callDoc.data();
+      
+      console.log('📞 Call data received:', JSON.stringify(data, null, 2));
       
       const call: Call = {
         id: callDoc.id,
@@ -107,7 +112,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         endedBy: data.endedBy,
       };
 
-      console.log('📞 Incoming call from:', call.callerName);
+      console.log('📞 Incoming call from:', call.callerName, 'callId:', call.id);
       setIncomingCall(call);
       playRingtone();
     }, (error) => {
@@ -117,9 +122,8 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     return () => {
       console.log('🔌 Cleaning up call listener');
       unsubscribe();
-      stopRingtone();
     };
-  }, [user?.uid, incomingCall, playRingtone, stopRingtone]);
+  }, [user?.uid, playRingtone, stopRingtone]);
 
   useEffect(() => {
     if (!activeCall?.id || !db) return;
