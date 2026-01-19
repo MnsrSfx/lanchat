@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { Call } from '@/types';
-import { Audio } from 'expo-av';
+import { createAudioPlayer, AudioPlayer } from 'expo-audio';
 import { Platform } from 'react-native';
 
 interface CallContextValue {
@@ -31,19 +31,19 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const { user } = useAuth();
   const [incomingCall, setIncomingCall] = useState<Call | null>(null);
   const [activeCall, setActiveCall] = useState<Call | null>(null);
-  const ringtoneRef = useRef<Audio.Sound | null>(null);
+  const ringtoneRef = useRef<AudioPlayer | null>(null);
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const playRingtone = useCallback(async () => {
     if (Platform.OS === 'web') return;
     
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
-        { isLooping: true, volume: 1.0 }
+      const player = createAudioPlayer(
+        { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' }
       );
-      ringtoneRef.current = sound;
-      await sound.playAsync();
+      player.loop = true;
+      ringtoneRef.current = player;
+      player.play();
       console.log('🔔 Playing ringtone');
     } catch (error) {
       console.error('❌ Error playing ringtone:', error);
@@ -53,8 +53,8 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const stopRingtone = useCallback(async () => {
     if (ringtoneRef.current) {
       try {
-        await ringtoneRef.current.stopAsync();
-        await ringtoneRef.current.unloadAsync();
+        ringtoneRef.current.pause();
+        ringtoneRef.current.release();
         ringtoneRef.current = null;
         console.log('🔕 Stopped ringtone');
       } catch (error) {
