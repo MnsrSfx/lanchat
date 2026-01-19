@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,15 +22,17 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { User } from '@/types';
 import Avatar from '@/components/Avatar';
+import { useCall } from '@/contexts/CallContext';
 
 export default function CallScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
+  const { activeCall, initiateCall, endCall } = useCall();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [callStatus, setCallStatus] = useState<'calling' | 'connected' | 'ended'>('calling');
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(false);
+  const [callInitiated, setCallInitiated] = useState(false);
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -83,7 +85,17 @@ export default function CallScreen() {
   }, [userId]);
 
   useEffect(() => {
-    if (callStatus === 'calling' && user) {
+    if (user && !callInitiated && !activeCall) {
+      console.log('📞 Initiating call to:', user.name);
+      setCallInitiated(true);
+      initiateCall(userId!, user.name, user.avatar || '');
+    }
+  }, [user, callInitiated, activeCall, userId, initiateCall]);
+
+  useEffect(() => {
+    const isRinging = activeCall?.status === 'ringing';
+    
+    if (isRinging) {
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
@@ -98,21 +110,14 @@ export default function CallScreen() {
           }),
         ])
       ).start();
-
-      const connectTimer = setTimeout(() => {
-        setCallStatus('connected');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }, 3000);
-
-      return () => clearTimeout(connectTimer);
     } else {
       pulseAnim.stopAnimation();
       pulseAnim.setValue(1);
     }
-  }, [callStatus, pulseAnim, user]);
+  }, [activeCall?.status, pulseAnim]);
 
   useEffect(() => {
-    if (callStatus === 'connected') {
+    if (activeCall?.status === 'accepted') {
       durationTimerRef.current = setInterval(() => {
         setDuration(prev => prev + 1);
       }, 1000);
@@ -123,7 +128,16 @@ export default function CallScreen() {
         clearInterval(durationTimerRef.current);
       }
     };
-  }, [callStatus]);
+  }, [activeCall?.status]);
+
+  useEffect(() => {
+    if (activeCall === null && callInitiated) {
+      console.log('📞 Call ended, going back');
+      setTimeout(() => {
+        router.back();
+      }, 500);
+    }
+  }, [activeCall, callInitiated]);
 
   if (loading) {
     return (
@@ -153,12 +167,27 @@ export default function CallScreen() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleEndCall = () => {
-    setCallStatus('ended');
+  const getCallStatusText = () => {
+    if (!activeCall) return 'Call ended';
+    switch (activeCall.status) {
+      case 'ringing':
+        return 'Calling...';
+      case 'accepted':
+        return formatDuration(duration);
+      case 'declined':
+        return 'Call declined';
+      case 'missed':
+        return 'No answer';
+      case 'ended':
+        return 'Call ended';
+      default:
+        return 'Connecting...';
+    }
+  };
+
+  const handleEndCall = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    setTimeout(() => {
-      router.back();
-    }, 500);
+    await endCall();
   };
 
   const toggleMute = () => {
@@ -171,13 +200,15 @@ export default function CallScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  const isRinging = activeCall?.status === 'ringing';
+
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.content}>
         <View style={styles.userInfo}>
-          {callStatus === 'calling' ? (
+          {isRinging ? (
             <Animated.View style={[styles.avatarWrapper, { transform: [{ scale: pulseAnim }] }]}>
               <View style={styles.pulseRing} />
               <Avatar uri={user.avatar} name={user.name} size={120} />
@@ -191,40 +222,42 @@ export default function CallScreen() {
           </Text>
           
           <Text style={styles.callStatus}>
-            {callStatus === 'calling' ? 'Calling...' : callStatus === 'connected' ? formatDuration(duration) : 'Call ended'}
+            {getCallStatusText()}
           </Text>
         </View>
 
         <View style={styles.controls}>
-          <View style={styles.controlsRow}>
-            <TouchableOpacity
-              style={[styles.controlButton, isMuted && styles.controlButtonActive]}
-              onPress={toggleMute}
-            >
-              {isMuted ? (
-                <MicOff size={24} color={isMuted ? '#fff' : Colors.light.text} />
-              ) : (
-                <Mic size={24} color={Colors.light.text} />
-              )}
-              <Text style={[styles.controlLabel, isMuted && styles.controlLabelActive]}>
-                {isMuted ? 'Unmute' : 'Mute'}
-              </Text>
-            </TouchableOpacity>
+          {activeCall?.status === 'accepted' && (
+            <View style={styles.controlsRow}>
+              <TouchableOpacity
+                style={[styles.controlButton, isMuted && styles.controlButtonActive]}
+                onPress={toggleMute}
+              >
+                {isMuted ? (
+                  <MicOff size={24} color={isMuted ? '#fff' : Colors.light.text} />
+                ) : (
+                  <Mic size={24} color={Colors.light.text} />
+                )}
+                <Text style={[styles.controlLabel, isMuted && styles.controlLabelActive]}>
+                  {isMuted ? 'Unmute' : 'Mute'}
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.controlButton, isSpeaker && styles.controlButtonActive]}
-              onPress={toggleSpeaker}
-            >
-              {isSpeaker ? (
-                <Volume2 size={24} color="#fff" />
-              ) : (
-                <VolumeX size={24} color={Colors.light.text} />
-              )}
-              <Text style={[styles.controlLabel, isSpeaker && styles.controlLabelActive]}>
-                Speaker
-              </Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={[styles.controlButton, isSpeaker && styles.controlButtonActive]}
+                onPress={toggleSpeaker}
+              >
+                {isSpeaker ? (
+                  <Volume2 size={24} color="#fff" />
+                ) : (
+                  <VolumeX size={24} color={Colors.light.text} />
+                )}
+                <Text style={[styles.controlLabel, isSpeaker && styles.controlLabelActive]}>
+                  Speaker
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <TouchableOpacity style={styles.endCallButton} onPress={handleEndCall}>
             <PhoneOff size={28} color="#fff" />

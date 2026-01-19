@@ -50,12 +50,17 @@ export interface Chat {
 export interface Call {
   id: string;
   callerId: string;
+  callerName: string;
+  callerAvatar: string;
   receiverId: string;
-  type: 'voice' | 'video';
-  status: 'calling' | 'ongoing' | 'ended' | 'missed';
-  startTime?: Date;
-  endTime?: Date;
-  duration?: number;
+  receiverName: string;
+  receiverAvatar: string;
+  type: 'voice';
+  status: 'ringing' | 'accepted' | 'declined' | 'ended' | 'missed' | 'busy';
+  createdAt: Date;
+  answeredAt?: Date;
+  endedAt?: Date;
+  endedBy?: string;
 }
 
 export interface AuthState {

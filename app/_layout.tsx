@@ -1,7 +1,9 @@
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useRouter, useSegments, router as expoRouter } from "expo-router";
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
+import { CallProvider, useCall } from '@/contexts/CallContext';
+import IncomingCallModal from '@/components/IncomingCallModal';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 
@@ -13,6 +15,25 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+function CallHandler() {
+  const { incomingCall, acceptCall, declineCall } = useCall();
+
+  const handleAccept = async () => {
+    await acceptCall();
+    if (incomingCall) {
+      expoRouter.push(`/call/${incomingCall.callerId}` as any);
+    }
+  };
+
+  return (
+    <IncomingCallModal
+      call={incomingCall}
+      onAccept={handleAccept}
+      onDecline={declineCall}
+    />
+  );
+}
 
 function RootLayoutNav() {
   const { isAuthenticated, isLoading, needsProfileSetup, needsEmailVerification, user } = useAuth();
@@ -65,9 +86,13 @@ function RootLayoutNav() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="chat/[userId]" options={{ headerShown: true }} />
-    </Stack>
+    <>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="chat/[userId]" options={{ headerShown: true }} />
+        <Stack.Screen name="call/[userId]" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+      </Stack>
+      <CallHandler />
+    </>
   );
 }
 
@@ -75,9 +100,11 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <NotificationProvider>
-          <RootLayoutNav />
-        </NotificationProvider>
+        <CallProvider>
+          <NotificationProvider>
+            <RootLayoutNav />
+          </NotificationProvider>
+        </CallProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
