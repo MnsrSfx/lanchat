@@ -67,12 +67,23 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   }, []);
 
   useEffect(() => {
-    if (!user?.uid || !db) {
-      console.log('⚠️ Call listener not started - no user or db');
+    console.log('📞 Call listener effect triggered, user:', user?.uid, 'db:', !!db);
+    
+    if (!user?.uid) {
+      console.log('⚠️ Call listener not started - no user uid');
+      return;
+    }
+    
+    if (!db) {
+      console.log('⚠️ Call listener not started - db not initialized');
       return;
     }
 
-    console.log('📞 Setting up incoming call listener for user:', user.uid);
+    console.log('📞 ====================================');
+    console.log('📞 SETTING UP INCOMING CALL LISTENER');
+    console.log('📞 User ID:', user.uid);
+    console.log('📞 User Name:', user.name);
+    console.log('📞 ====================================');
     
     const callsRef = collection(db, 'calls');
     const q = query(
@@ -81,20 +92,31 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       where('status', '==', 'ringing')
     );
 
+    console.log('📞 Query created for receiverId:', user.uid);
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      console.log('📞 Incoming call snapshot received, docs:', snapshot.docs.length);
+      console.log('📞 ====================================');
+      console.log('📞 INCOMING CALL SNAPSHOT RECEIVED');
+      console.log('📞 Number of docs:', snapshot.docs.length);
+      console.log('📞 Is empty:', snapshot.empty);
+      console.log('📞 ====================================');
       
       if (snapshot.empty) {
-        console.log('📞 No incoming calls - clearing state');
+        console.log('📞 No incoming calls found - clearing state');
         stopRingtone();
         setIncomingCall(null);
         return;
       }
 
+      snapshot.docs.forEach((doc, index) => {
+        console.log(`📞 Call doc ${index}:`, doc.id, doc.data());
+      });
+
       const callDoc = snapshot.docs[0];
       const data = callDoc.data();
       
-      console.log('📞 Call data received:', JSON.stringify(data, null, 2));
+      console.log('📞 Processing call:', callDoc.id);
+      console.log('📞 Call data:', JSON.stringify(data, null, 2));
       
       const call: Call = {
         id: callDoc.id,
@@ -112,18 +134,29 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         endedBy: data.endedBy,
       };
 
-      console.log('📞 Incoming call from:', call.callerName, 'callId:', call.id);
+      console.log('📞 ====================================');
+      console.log('📞 INCOMING CALL DETECTED!');
+      console.log('📞 From:', call.callerName);
+      console.log('📞 Call ID:', call.id);
+      console.log('📞 Status:', call.status);
+      console.log('📞 ====================================');
+      
       setIncomingCall(call);
       playRingtone();
     }, (error) => {
-      console.error('❌ Error listening for calls:', error);
+      console.error('❌ ====================================');
+      console.error('❌ ERROR LISTENING FOR CALLS');
+      console.error('❌ Error:', error);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ ====================================');
     });
 
     return () => {
-      console.log('🔌 Cleaning up call listener');
+      console.log('🔌 Cleaning up call listener for user:', user.uid);
       unsubscribe();
     };
-  }, [user?.uid, playRingtone, stopRingtone]);
+  }, [user?.uid, user?.name, playRingtone, stopRingtone]);
 
   useEffect(() => {
     if (!activeCall?.id || !db) return;
@@ -174,8 +207,16 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     receiverName: string, 
     receiverAvatar: string
   ): Promise<string | null> => {
+    console.log('📞 ====================================');
+    console.log('📞 INITIATING CALL');
+    console.log('📞 From:', user?.uid, user?.name);
+    console.log('📞 To:', receiverId, receiverName);
+    console.log('📞 ====================================');
+    
     if (!user?.uid || !db) {
       console.error('❌ Cannot initiate call - no user or db');
+      console.error('❌ user?.uid:', user?.uid);
+      console.error('❌ db:', !!db);
       return null;
     }
 
@@ -195,8 +236,15 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         createdAt: serverTimestamp(),
       };
 
+      console.log('📞 Creating call document with data:', JSON.stringify(callData, null, 2));
+      
       await setDoc(callDocRef, callData);
-      console.log('📞 Call initiated:', callId);
+      
+      console.log('📞 ====================================');
+      console.log('📞 CALL DOCUMENT CREATED SUCCESSFULLY');
+      console.log('📞 Call ID:', callId);
+      console.log('📞 Receiver should see incoming call now');
+      console.log('📞 ====================================');
 
       const newCall: Call = {
         id: callId,
