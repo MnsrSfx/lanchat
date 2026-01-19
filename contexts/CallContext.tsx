@@ -225,19 +225,6 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       } else if (updatedCall.status !== activeCall.status) {
         console.log('📞 Call status changed from', activeCall.status, 'to', updatedCall.status);
         setActiveCall(updatedCall);
-        
-        if (updatedCall.status === 'accepted' && activeCall.status === 'ringing' && activeCall.callerId === user?.uid) {
-          console.log('📞 Call accepted by receiver, starting WebRTC (caller)...');
-          if (isWebRTCSupported) {
-            webRTCService.startCall(activeCall.id).then((started) => {
-              if (started) {
-                console.log('✅ WebRTC connection started (caller)');
-              } else {
-                console.log('⚠️ WebRTC failed to start (caller)');
-              }
-            });
-          }
-        }
       }
     });
 
@@ -305,9 +292,20 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       };
       setActiveCall(newCall);
 
+      if (isWebRTCSupported) {
+        console.log('📞 Starting WebRTC offer (caller)...');
+        const webrtcStarted = await webRTCService.startCall(callId);
+        if (webrtcStarted) {
+          console.log('✅ WebRTC offer created and saved (caller)');
+        } else {
+          console.log('⚠️ WebRTC failed to start (caller)');
+        }
+      }
+
       callTimeoutRef.current = setTimeout(async () => {
         console.log('📞 Call timeout - marking as missed');
         try {
+          await webRTCService.cleanup();
           await updateDoc(callDocRef, {
             status: 'missed',
             endedAt: serverTimestamp(),
@@ -322,7 +320,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       console.error('❌ Error initiating call:', error);
       return null;
     }
-  }, [user]);
+  }, [user, isWebRTCSupported]);
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall?.id || !db) {

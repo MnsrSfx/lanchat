@@ -140,14 +140,24 @@ export default function CallScreen() {
     };
   }, [activeCall?.status]);
 
+  const hasCallEnded = useRef(false);
+  const wasConnected = useRef(false);
+
   useEffect(() => {
-    if (activeCall === null && (callInitiated || isAccepting)) {
+    if (activeCall?.status === 'accepted') {
+      wasConnected.current = true;
+    }
+  }, [activeCall?.status]);
+
+  useEffect(() => {
+    if (activeCall === null && wasConnected.current && !hasCallEnded.current) {
+      hasCallEnded.current = true;
       console.log('📞 Call ended, going back');
       setTimeout(() => {
         router.back();
       }, 500);
     }
-  }, [activeCall, callInitiated, isAccepting]);
+  }, [activeCall]);
 
   if (loading) {
     return (

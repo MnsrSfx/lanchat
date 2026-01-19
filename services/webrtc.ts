@@ -32,6 +32,7 @@ class WebRTCService {
   private unsubscribeCalleeCandidates: (() => void) | null = null;
   private callbacks: WebRTCCallbacks = {};
   private isCaller: boolean = false;
+  private audioElement: HTMLAudioElement | null = null;
 
   isSupported(): boolean {
     if (Platform.OS === 'web') {
@@ -101,10 +102,12 @@ class WebRTCService {
       };
 
       pc.ontrack = (event) => {
-        console.log('🎵 Remote track received');
+        console.log('🎵 Remote track received:', event.track.kind);
         if (event.streams && event.streams[0]) {
           this.remoteStream = event.streams[0];
+          console.log('🎵 Remote stream tracks:', event.streams[0].getTracks().map(t => t.kind).join(', '));
           this.callbacks.onRemoteStream?.(event.streams[0]);
+          this.playRemoteAudio(event.streams[0]);
         }
       };
 
@@ -279,6 +282,45 @@ class WebRTCService {
     }
   }
 
+  private playRemoteAudio(stream: MediaStream) {
+    if (Platform.OS !== 'web') {
+      console.log('🔊 Native platform - audio handled by native WebRTC');
+      return;
+    }
+
+    try {
+      if (this.audioElement) {
+        this.audioElement.srcObject = null;
+        this.audioElement.remove();
+      }
+
+      console.log('🔊 Creating audio element for remote stream...');
+      const audio = document.createElement('audio');
+      audio.srcObject = stream;
+      audio.autoplay = true;
+      audio.setAttribute('playsinline', 'true');
+      audio.style.display = 'none';
+      document.body.appendChild(audio);
+      this.audioElement = audio;
+
+      audio.play().then(() => {
+        console.log('✅ Remote audio playing');
+      }).catch((error) => {
+        console.error('❌ Error playing remote audio:', error);
+        audio.muted = true;
+        audio.play().then(() => {
+          console.log('🔊 Audio playing muted, attempting unmute...');
+          setTimeout(() => {
+            audio.muted = false;
+            console.log('🔊 Audio unmuted');
+          }, 100);
+        }).catch(e => console.error('❌ Still cannot play audio:', e));
+      });
+    } catch (error) {
+      console.error('❌ Error setting up remote audio:', error);
+    }
+  }
+
   toggleMute(muted: boolean) {
     if (this.localStream) {
       this.localStream.getAudioTracks().forEach((track) => {
@@ -308,6 +350,13 @@ class WebRTCService {
       this.peerConnection.close();
       this.peerConnection = null;
       console.log('🔌 Peer connection closed');
+    }
+
+    if (this.audioElement) {
+      this.audioElement.srcObject = null;
+      this.audioElement.remove();
+      this.audioElement = null;
+      console.log('🔊 Audio element removed');
     }
 
     if (this.callId && db) {
