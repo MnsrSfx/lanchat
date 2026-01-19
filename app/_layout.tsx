@@ -20,9 +20,10 @@ function CallHandler() {
   const { incomingCall, acceptCall, declineCall } = useCall();
 
   const handleAccept = async () => {
+    const callerId = incomingCall?.callerId;
     await acceptCall();
-    if (incomingCall) {
-      expoRouter.push(`/call/${incomingCall.callerId}` as any);
+    if (callerId) {
+      expoRouter.push(`/call/${callerId}?mode=accept` as any);
     }
   };
 

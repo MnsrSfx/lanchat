@@ -161,7 +161,11 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   useEffect(() => {
     if (!activeCall?.id || !db) return;
 
-    console.log('📞 Listening to active call:', activeCall.id);
+    console.log('📞 ====================================');
+    console.log('📞 LISTENING TO ACTIVE CALL');
+    console.log('📞 Call ID:', activeCall.id);
+    console.log('📞 Current status:', activeCall.status);
+    console.log('📞 ====================================');
     
     const callDocRef = doc(db, 'calls', activeCall.id);
     const unsubscribe = onSnapshot(callDocRef, (snapshot) => {
@@ -189,18 +193,23 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         endedBy: data.endedBy,
       };
 
-      console.log('📞 Active call updated:', updatedCall.status);
+      console.log('📞 Active call snapshot received:', updatedCall.status);
       
       if (updatedCall.status === 'declined' || updatedCall.status === 'ended' || updatedCall.status === 'missed') {
+        console.log('📞 Call ended with status:', updatedCall.status);
         setActiveCall(null);
         stopRingtone();
-      } else {
+      } else if (updatedCall.status !== activeCall.status) {
+        console.log('📞 Call status changed from', activeCall.status, 'to', updatedCall.status);
         setActiveCall(updatedCall);
       }
     });
 
-    return () => unsubscribe();
-  }, [activeCall?.id, stopRingtone]);
+    return () => {
+      console.log('📞 Cleaning up active call listener');
+      unsubscribe();
+    };
+  }, [activeCall?.id, activeCall?.status, stopRingtone]);
 
   const initiateCall = useCallback(async (
     receiverId: string, 
@@ -286,16 +295,26 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     }
 
     try {
+      console.log('📞 ====================================');
+      console.log('📞 ACCEPTING CALL');
+      console.log('📞 Call ID:', incomingCall.id);
+      console.log('📞 From:', incomingCall.callerName);
+      console.log('📞 ====================================');
+      
       const callDocRef = doc(db, 'calls', incomingCall.id);
+      
+      stopRingtone();
+      
+      const acceptedCall = { ...incomingCall, status: 'accepted' as const, answeredAt: new Date() };
+      setActiveCall(acceptedCall);
+      setIncomingCall(null);
+      
       await updateDoc(callDocRef, {
         status: 'accepted',
         answeredAt: serverTimestamp(),
       });
       
-      console.log('📞 Call accepted');
-      stopRingtone();
-      setActiveCall({ ...incomingCall, status: 'accepted', answeredAt: new Date() });
-      setIncomingCall(null);
+      console.log('📞 Call accepted and Firestore updated');
     } catch (error) {
       console.error('❌ Error accepting call:', error);
     }

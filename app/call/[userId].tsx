@@ -7,7 +7,7 @@ import {
   Animated,
   ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, router, Stack } from 'expo-router';
+import { useLocalSearchParams, useGlobalSearchParams, router, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { 
@@ -26,13 +26,23 @@ import { useCall } from '@/contexts/CallContext';
 
 export default function CallScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
+  const params = useGlobalSearchParams<{ mode?: string }>();
+  const isAccepting = params.mode === 'accept';
   const { activeCall, initiateCall, endCall } = useCall();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(false);
-  const [callInitiated, setCallInitiated] = useState(false);
+  const [callInitiated, setCallInitiated] = useState(isAccepting);
+
+  const displayName = isAccepting && activeCall 
+    ? activeCall.callerName 
+    : (user?.name || activeCall?.receiverName || 'Unknown');
+  
+  const displayAvatar = isAccepting && activeCall 
+    ? activeCall.callerAvatar 
+    : (user?.avatar || activeCall?.receiverAvatar || '');
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -85,12 +95,12 @@ export default function CallScreen() {
   }, [userId]);
 
   useEffect(() => {
-    if (user && !callInitiated && !activeCall) {
+    if (user && !callInitiated && !activeCall && !isAccepting) {
       console.log('📞 Initiating call to:', user.name);
       setCallInitiated(true);
       initiateCall(userId!, user.name, user.avatar || '');
     }
-  }, [user, callInitiated, activeCall, userId, initiateCall]);
+  }, [user, callInitiated, activeCall, userId, initiateCall, isAccepting]);
 
   useEffect(() => {
     const isRinging = activeCall?.status === 'ringing';
@@ -131,13 +141,13 @@ export default function CallScreen() {
   }, [activeCall?.status]);
 
   useEffect(() => {
-    if (activeCall === null && callInitiated) {
+    if (activeCall === null && (callInitiated || isAccepting)) {
       console.log('📞 Call ended, going back');
       setTimeout(() => {
         router.back();
       }, 500);
     }
-  }, [activeCall, callInitiated]);
+  }, [activeCall, callInitiated, isAccepting]);
 
   if (loading) {
     return (
@@ -149,7 +159,7 @@ export default function CallScreen() {
     );
   }
 
-  if (!user) {
+  if (!user && !isAccepting) {
     return (
       <SafeAreaView style={[styles.container, styles.centerContent]}>
         <Stack.Screen options={{ headerShown: false }} />
@@ -211,14 +221,14 @@ export default function CallScreen() {
           {isRinging ? (
             <Animated.View style={[styles.avatarWrapper, { transform: [{ scale: pulseAnim }] }]}>
               <View style={styles.pulseRing} />
-              <Avatar uri={user.avatar} name={user.name} size={120} />
+              <Avatar uri={displayAvatar} name={displayName} size={120} />
             </Animated.View>
           ) : (
-            <Avatar uri={user.avatar} name={user.name} size={120} />
+            <Avatar uri={displayAvatar} name={displayName} size={120} />
           )}
           
           <Text style={styles.userName}>
-            {user.name}
+            {displayName}
           </Text>
           
           <Text style={styles.callStatus}>
