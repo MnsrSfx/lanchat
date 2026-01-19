@@ -73,7 +73,7 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isFirstLoadRef = useRef(true);
+
   const isMountedRef = useRef(false);
   const markedMessagesRef = useRef(new Set<string>());
   const isMarkingRef = useRef(false);
@@ -142,7 +142,6 @@ export default function ChatScreen() {
     }
 
     isMountedRef.current = true;
-    isFirstLoadRef.current = true;
     const markedMessages = markedMessagesRef.current;
     const chatId = [currentUser.uid, userId].sort().join('_');
     console.log('📡 Setting up messages listener for chatId:', chatId);
@@ -167,15 +166,8 @@ export default function ChatScreen() {
             createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
             isRead: data.isRead || false,
           };
-        }).reverse();
+        });
         setMessages(fetchedMessages);
-
-        if (isFirstLoadRef.current && fetchedMessages.length > 0) {
-          setTimeout(() => {
-            flatListRef.current?.scrollToEnd({ animated: false });
-          }, 300);
-          isFirstLoadRef.current = false;
-        }
 
         const unreadMessages = snapshot.docs.filter(doc => {
           const data = doc.data();
@@ -369,9 +361,7 @@ export default function ChatScreen() {
       setSelectedImage(null);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd();
-      }, 100);
+
     } catch (error) {
       console.error('❌ Error sending message:', error);
       Alert.alert('Error', 'Failed to send message. Please try again.');
@@ -714,19 +704,7 @@ export default function ChatScreen() {
           keyExtractor={item => item.id}
           contentContainerStyle={styles.messagesList}
           showsVerticalScrollIndicator={true}
-          persistentScrollbar={true}
-          onContentSizeChange={() => {
-            if (!isFirstLoadRef.current && messages.length > 0) {
-              flatListRef.current?.scrollToEnd({ animated: true });
-            }
-          }}
-          onLayout={() => {
-            if (isFirstLoadRef.current && messages.length > 0) {
-              setTimeout(() => {
-                flatListRef.current?.scrollToEnd({ animated: false });
-              }, 100);
-            }
-          }}
+          inverted={true}
         />
 
         {selectedImage && (
