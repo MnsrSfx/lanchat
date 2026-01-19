@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Animated,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useGlobalSearchParams, router, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,11 +29,10 @@ export default function CallScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const params = useGlobalSearchParams<{ mode?: string }>();
   const isAccepting = params.mode === 'accept';
-  const { activeCall, initiateCall, endCall } = useCall();
+  const { activeCall, initiateCall, endCall, isMuted, toggleMute, connectionState, isWebRTCSupported } = useCall();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [duration, setDuration] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(false);
   const [callInitiated, setCallInitiated] = useState(isAccepting);
 
@@ -200,8 +200,8 @@ export default function CallScreen() {
     await endCall();
   };
 
-  const toggleMute = () => {
-    setIsMuted(!isMuted);
+  const handleToggleMute = () => {
+    toggleMute();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -211,6 +211,7 @@ export default function CallScreen() {
   };
 
   const isRinging = activeCall?.status === 'ringing';
+  const isConnected = connectionState === 'connected';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -238,35 +239,57 @@ export default function CallScreen() {
 
         <View style={styles.controls}>
           {activeCall?.status === 'accepted' && (
-            <View style={styles.controlsRow}>
-              <TouchableOpacity
-                style={[styles.controlButton, isMuted && styles.controlButtonActive]}
-                onPress={toggleMute}
-              >
-                {isMuted ? (
-                  <MicOff size={24} color={isMuted ? '#fff' : Colors.light.text} />
-                ) : (
-                  <Mic size={24} color={Colors.light.text} />
-                )}
-                <Text style={[styles.controlLabel, isMuted && styles.controlLabelActive]}>
-                  {isMuted ? 'Unmute' : 'Mute'}
-                </Text>
-              </TouchableOpacity>
+            <>
+              {Platform.OS === 'web' && !isWebRTCSupported && (
+                <View style={styles.warningBanner}>
+                  <Text style={styles.warningText}>Audio not supported in this browser</Text>
+                </View>
+              )}
+              
+              {Platform.OS === 'web' && isWebRTCSupported && (
+                <View style={[styles.connectionBanner, isConnected && styles.connectionBannerConnected]}>
+                  <Text style={styles.connectionText}>
+                    {isConnected ? '🔊 Audio connected' : '⏳ Connecting audio...'}
+                  </Text>
+                </View>
+              )}
 
-              <TouchableOpacity
-                style={[styles.controlButton, isSpeaker && styles.controlButtonActive]}
-                onPress={toggleSpeaker}
-              >
-                {isSpeaker ? (
-                  <Volume2 size={24} color="#fff" />
-                ) : (
-                  <VolumeX size={24} color={Colors.light.text} />
-                )}
-                <Text style={[styles.controlLabel, isSpeaker && styles.controlLabelActive]}>
-                  Speaker
-                </Text>
-              </TouchableOpacity>
-            </View>
+              {Platform.OS !== 'web' && (
+                <View style={styles.warningBanner}>
+                  <Text style={styles.warningText}>Audio requires development build</Text>
+                </View>
+              )}
+              
+              <View style={styles.controlsRow}>
+                <TouchableOpacity
+                  style={[styles.controlButton, isMuted && styles.controlButtonActive]}
+                  onPress={handleToggleMute}
+                >
+                  {isMuted ? (
+                    <MicOff size={24} color={isMuted ? '#fff' : Colors.light.text} />
+                  ) : (
+                    <Mic size={24} color={Colors.light.text} />
+                  )}
+                  <Text style={[styles.controlLabel, isMuted && styles.controlLabelActive]}>
+                    {isMuted ? 'Unmute' : 'Mute'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.controlButton, isSpeaker && styles.controlButtonActive]}
+                  onPress={toggleSpeaker}
+                >
+                  {isSpeaker ? (
+                    <Volume2 size={24} color="#fff" />
+                  ) : (
+                    <VolumeX size={24} color={Colors.light.text} />
+                  )}
+                  <Text style={[styles.controlLabel, isSpeaker && styles.controlLabelActive]}>
+                    Speaker
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
           )}
 
           <TouchableOpacity style={styles.endCallButton} onPress={handleEndCall}>
@@ -376,5 +399,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'center',
+  },
+  warningBanner: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+    alignSelf: 'center',
+  },
+  warningText: {
+    color: '#D97706',
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  connectionBanner: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+    alignSelf: 'center',
+  },
+  connectionBannerConnected: {
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+  },
+  connectionText: {
+    color: Colors.light.text,
+    fontSize: 13,
+    fontWeight: '500' as const,
   },
 });

@@ -16,23 +16,43 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Call } from '@/types';
 import { createAudioPlayer, AudioPlayer } from 'expo-audio';
 import { Platform } from 'react-native';
+import { webRTCService } from '@/services/webrtc';
 
 interface CallContextValue {
   incomingCall: Call | null;
   activeCall: Call | null;
   isInCall: boolean;
+  isMuted: boolean;
+  connectionState: string | null;
+  isWebRTCSupported: boolean;
   initiateCall: (receiverId: string, receiverName: string, receiverAvatar: string) => Promise<string | null>;
   acceptCall: () => Promise<void>;
   declineCall: () => Promise<void>;
   endCall: () => Promise<void>;
+  toggleMute: () => void;
 }
 
 export const [CallProvider, useCall] = createContextHook<CallContextValue>(() => {
   const { user } = useAuth();
   const [incomingCall, setIncomingCall] = useState<Call | null>(null);
   const [activeCall, setActiveCall] = useState<Call | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [connectionState, setConnectionState] = useState<string | null>(null);
   const ringtoneRef = useRef<AudioPlayer | null>(null);
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isWebRTCSupported = webRTCService.isSupported();
+
+  useEffect(() => {
+    webRTCService.setCallbacks({
+      onConnectionStateChange: (state) => {
+        console.log('📞 WebRTC connection state changed:', state);
+        setConnectionState(state);
+      },
+      onError: (error) => {
+        console.error('📞 WebRTC error:', error);
+      },
+    });
+  }, []);
 
   const playRingtone = useCallback(async () => {
     try {
@@ -197,11 +217,27 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       
       if (updatedCall.status === 'declined' || updatedCall.status === 'ended' || updatedCall.status === 'missed') {
         console.log('📞 Call ended with status:', updatedCall.status);
+        webRTCService.cleanup();
         setActiveCall(null);
         stopRingtone();
+        setIsMuted(false);
+        setConnectionState(null);
       } else if (updatedCall.status !== activeCall.status) {
         console.log('📞 Call status changed from', activeCall.status, 'to', updatedCall.status);
         setActiveCall(updatedCall);
+        
+        if (updatedCall.status === 'accepted' && activeCall.status === 'ringing' && activeCall.callerId === user?.uid) {
+          console.log('📞 Call accepted by receiver, starting WebRTC (caller)...');
+          if (isWebRTCSupported) {
+            webRTCService.startCall(activeCall.id).then((started) => {
+              if (started) {
+                console.log('✅ WebRTC connection started (caller)');
+              } else {
+                console.log('⚠️ WebRTC failed to start (caller)');
+              }
+            });
+          }
+        }
       }
     });
 
@@ -209,7 +245,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       console.log('📞 Cleaning up active call listener');
       unsubscribe();
     };
-  }, [activeCall?.id, activeCall?.status, stopRingtone]);
+  }, [activeCall?.id, activeCall?.status, activeCall?.callerId, stopRingtone, user?.uid, isWebRTCSupported]);
 
   const initiateCall = useCallback(async (
     receiverId: string, 
@@ -315,10 +351,20 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       });
       
       console.log('📞 Call accepted and Firestore updated');
+
+      if (isWebRTCSupported) {
+        console.log('📞 Starting WebRTC answer...');
+        const webrtcStarted = await webRTCService.answerCall(incomingCall.id);
+        if (webrtcStarted) {
+          console.log('✅ WebRTC connection established (callee)');
+        } else {
+          console.log('⚠️ WebRTC failed to start');
+        }
+      }
     } catch (error) {
       console.error('❌ Error accepting call:', error);
     }
-  }, [incomingCall, stopRingtone]);
+  }, [incomingCall, stopRingtone, isWebRTCSupported]);
 
   const declineCall = useCallback(async () => {
     if (!incomingCall?.id || !db) {
@@ -356,6 +402,8 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     }
 
     try {
+      await webRTCService.cleanup();
+      
       const callDocRef = doc(db, 'calls', callToEnd.id);
       await updateDoc(callDocRef, {
         status: 'ended',
@@ -367,18 +415,31 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       stopRingtone();
       setActiveCall(null);
       setIncomingCall(null);
+      setIsMuted(false);
+      setConnectionState(null);
     } catch (error) {
       console.error('❌ Error ending call:', error);
     }
   }, [activeCall, incomingCall, user?.uid, stopRingtone]);
 
+  const toggleMute = useCallback(() => {
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+    webRTCService.toggleMute(newMutedState);
+    console.log('📞 Mute toggled:', newMutedState);
+  }, [isMuted]);
+
   return {
     incomingCall,
     activeCall,
     isInCall: !!activeCall && activeCall.status === 'accepted',
+    isMuted,
+    connectionState,
+    isWebRTCSupported,
     initiateCall,
     acceptCall,
     declineCall,
     endCall,
+    toggleMute,
   };
 });
