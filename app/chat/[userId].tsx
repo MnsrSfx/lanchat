@@ -19,7 +19,14 @@ import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import { Audio } from 'expo-av';
+import { 
+  useAudioRecorder, 
+  RecordingPresets, 
+  setAudioModeAsync,
+  requestRecordingPermissionsAsync,
+  createAudioPlayer,
+  AudioPlayer,
+} from 'expo-audio';
 import { db, storage } from '@/src/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
@@ -54,10 +61,11 @@ export default function ChatScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [audioRecording, setAudioRecording] = useState<Audio.Recording | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
-  const [playingSound, setPlayingSound] = useState<Audio.Sound | null>(null);
+  const [playingSound, setPlayingSound] = useState<AudioPlayer | null>(null);
+  
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [showMessageMenu, setShowMessageMenu] = useState(false);
   const [showImageGallery, setShowImageGallery] = useState(false);
@@ -227,12 +235,12 @@ export default function ChatScreen() {
           Animated.timing(recordingAnimation, {
             toValue: 1.3,
             duration: 500,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== 'web',
           }),
           Animated.timing(recordingAnimation, {
             toValue: 1,
             duration: 500,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== 'web',
           }),
         ])
       ).start();
@@ -258,7 +266,7 @@ export default function ChatScreen() {
   useEffect(() => {
     return () => {
       if (playingSound) {
-        playingSound.unloadAsync();
+        playingSound.release();
       }
     };
   }, [playingSound]);
@@ -375,23 +383,21 @@ export default function ChatScreen() {
   const handleStartRecording = async () => {
     try {
       console.log('🎤 Starting audio recording...');
-      const { status } = await Audio.requestPermissionsAsync();
+      const { granted } = await requestRecordingPermissionsAsync();
       
-      if (status !== 'granted') {
+      if (!granted) {
         Alert.alert('Permission Required', 'Microphone permission is required to record audio.');
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
 
-      setAudioRecording(recording);
       setIsRecording(true);
       setRecordingDuration(0);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -404,11 +410,10 @@ export default function ChatScreen() {
   };
 
   const handleStopRecording = async () => {
-    if (!audioRecording || recordingDuration === 0 || !userId || !currentUser?.uid || !db || !storage) {
+    if (recordingDuration === 0 || !userId || !currentUser?.uid || !db || !storage) {
       console.error('❌ Cannot send voice message - missing required data');
       setIsRecording(false);
       setRecordingDuration(0);
-      setAudioRecording(null);
       return;
     }
 
@@ -417,8 +422,8 @@ export default function ChatScreen() {
     
     try {
       console.log('⏹️ Stopping recording...');
-      await audioRecording.stopAndUnloadAsync();
-      const uri = audioRecording.getURI();
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
       
       if (!uri) {
         throw new Error('Recording URI not found');
@@ -463,22 +468,18 @@ export default function ChatScreen() {
     } finally {
       setIsRecording(false);
       setRecordingDuration(0);
-      setAudioRecording(null);
       setIsUploading(false);
     }
   };
 
   const handleCancelRecording = async () => {
     try {
-      if (audioRecording) {
-        await audioRecording.stopAndUnloadAsync();
-      }
+      await audioRecorder.stop();
     } catch (error) {
       console.error('❌ Error canceling recording:', error);
     }
     setIsRecording(false);
     setRecordingDuration(0);
-    setAudioRecording(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -569,31 +570,30 @@ export default function ChatScreen() {
     try {
       if (playingMessageId === messageId && playingSound) {
         console.log('⏸️ Pausing voice message');
-        await playingSound.pauseAsync();
+        playingSound.pause();
         setPlayingMessageId(null);
         return;
       }
 
       if (playingSound) {
-        await playingSound.unloadAsync();
+        playingSound.release();
       }
 
       console.log('▶️ Playing voice message:', voiceUrl);
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: voiceUrl },
-        { shouldPlay: true }
-      );
+      const player = createAudioPlayer({ uri: voiceUrl });
 
-      setPlayingSound(sound);
+      setPlayingSound(player);
       setPlayingMessageId(messageId);
 
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
+      player.addListener('playbackStatusUpdate', (status) => {
+        if (status.didJustFinish) {
           console.log('✅ Voice message finished playing');
           setPlayingMessageId(null);
-          sound.unloadAsync();
+          player.release();
         }
       });
+
+      player.play();
     } catch (error) {
       console.error('❌ Error playing voice message:', error);
       Alert.alert('Error', 'Failed to play voice message.');
