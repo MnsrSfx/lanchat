@@ -229,14 +229,22 @@ export default function ChatScreen() {
     const chatId = [currentUser.uid, userId].sort().join('_');
     const typingRef = doc(db, 'chats', chatId, 'typing', userId);
 
-    const unsubscribe = onSnapshot(typingRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setIsOtherUserTyping(data.isTyping || false);
-      } else {
+    const unsubscribe = onSnapshot(
+      typingRef, 
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          setIsOtherUserTyping(data.isTyping || false);
+        } else {
+          setIsOtherUserTyping(false);
+        }
+      },
+      (error) => {
+        // Silently handle permission errors for typing status
+        console.log('Typing listener error (expected if rules not configured):', error.code);
         setIsOtherUserTyping(false);
       }
-    });
+    );
 
     return () => unsubscribe();
   }, [userId, currentUser?.uid]);
@@ -253,8 +261,11 @@ export default function ChatScreen() {
         isTyping,
         updatedAt: serverTimestamp(),
       }, { merge: true });
-    } catch (error) {
-      console.error('Error updating typing status:', error);
+    } catch (error: any) {
+      // Silently fail for permission errors - typing is not critical
+      if (error?.code !== 'permission-denied') {
+        console.log('Typing status update failed:', error?.code);
+      }
     }
   };
 
