@@ -508,20 +508,36 @@ export default function ChatScreen() {
   };
 
   const handleDeleteMessage = async () => {
-    if (selectedMessageId && userId && currentUser?.uid && db) {
-      const chatId = [currentUser.uid, userId].sort().join('_');
-      
-      try {
-        const messageRef = doc(db, 'chats', chatId, 'messages', selectedMessageId);
-        await deleteDoc(messageRef);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } catch (error) {
-        console.error('❌ Error deleting message:', error);
-        Alert.alert('Error', 'Failed to delete message.');
-      }
-    }
     setShowMessageMenu(false);
-    setSelectedMessageId(null);
+    
+    Alert.alert(
+      'Delete Message',
+      'This message will be deleted for everyone in this chat.',
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => setSelectedMessageId(null) },
+        {
+          text: 'Delete for Everyone',
+          style: 'destructive',
+          onPress: async () => {
+            if (selectedMessageId && userId && currentUser?.uid && db) {
+              const chatId = [currentUser.uid, userId].sort().join('_');
+              
+              try {
+                console.log('🗑️ Deleting message:', selectedMessageId, 'from chat:', chatId);
+                const messageRef = doc(db, 'chats', chatId, 'messages', selectedMessageId);
+                await deleteDoc(messageRef);
+                console.log('✅ Message deleted successfully for everyone');
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              } catch (error) {
+                console.error('❌ Error deleting message:', error);
+                Alert.alert('Error', 'Failed to delete message. Please try again.');
+              }
+            }
+            setSelectedMessageId(null);
+          },
+        },
+      ]
+    );
   };
 
   const handleTranslateMessage = async () => {
