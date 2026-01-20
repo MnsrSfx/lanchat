@@ -45,7 +45,7 @@ import {
   CheckCheck,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
-import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot } from 'firebase/firestore';
+import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot, updateDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import Avatar from '@/components/Avatar';
@@ -70,9 +70,11 @@ export default function ChatScreen() {
   const [showMessageMenu, setShowMessageMenu] = useState(false);
   const [showImageGallery, setShowImageGallery] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isMountedRef = useRef(false);
   const markedMessagesRef = useRef(new Set<string>());
@@ -219,6 +221,69 @@ export default function ChatScreen() {
       unsubscribe();
     };
   }, [userId, currentUser?.uid]);
+
+  // Listen to other user's typing status
+  useEffect(() => {
+    if (!userId || !currentUser?.uid || !db) return;
+
+    const chatId = [currentUser.uid, userId].sort().join('_');
+    const typingRef = doc(db, 'chats', chatId, 'typing', userId);
+
+    const unsubscribe = onSnapshot(typingRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setIsOtherUserTyping(data.isTyping || false);
+      } else {
+        setIsOtherUserTyping(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [userId, currentUser?.uid]);
+
+  // Update typing status
+  const updateTypingStatus = async (isTyping: boolean) => {
+    if (!userId || !currentUser?.uid || !db) return;
+
+    const chatId = [currentUser.uid, userId].sort().join('_');
+    const typingRef = doc(db, 'chats', chatId, 'typing', currentUser.uid);
+
+    try {
+      await setDoc(typingRef, {
+        isTyping,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } catch (error) {
+      console.error('Error updating typing status:', error);
+    }
+  };
+
+  const handleTextChange = (text: string) => {
+    setInputText(text);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    if (text.trim()) {
+      updateTypingStatus(true);
+      typingTimeoutRef.current = setTimeout(() => {
+        updateTypingStatus(false);
+      }, 2000);
+    } else {
+      updateTypingStatus(false);
+    }
+  };
+
+  // Cleanup typing status on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      updateTypingStatus(false);
+    };
+  }, []);
 
   useEffect(() => {
     if (isRecording) {
@@ -723,6 +788,19 @@ export default function ChatScreen() {
           inverted={true}
         />
 
+        {isOtherUserTyping && (
+          <View style={styles.typingContainer}>
+            <View style={styles.typingBubble}>
+              <View style={styles.typingDots}>
+                <Animated.View style={[styles.typingDot, styles.typingDot1]} />
+                <Animated.View style={[styles.typingDot, styles.typingDot2]} />
+                <Animated.View style={[styles.typingDot, styles.typingDot3]} />
+              </View>
+              <Text style={styles.typingText}>typing...</Text>
+            </View>
+          </View>
+        )}
+
         {selectedImage && (
           <View style={styles.imagePreview}>
             <Image source={{ uri: selectedImage }} style={styles.previewImage} />
@@ -769,7 +847,7 @@ export default function ChatScreen() {
               placeholder="Type a message..."
               placeholderTextColor={Colors.light.textSecondary}
               value={inputText}
-              onChangeText={setInputText}
+              onChangeText={handleTextChange}
               multiline
               maxLength={1000}
               editable={!isUploading}
@@ -1149,5 +1227,45 @@ const styles = StyleSheet.create({
   },
   menuOptionTextWarning: {
     color: Colors.light.warning,
+  },
+  typingContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  typingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.light.surface,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    gap: 6,
+  },
+  typingDots: {
+    flexDirection: 'row',
+    gap: 3,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.light.textSecondary,
+  },
+  typingDot1: {
+    opacity: 0.4,
+  },
+  typingDot2: {
+    opacity: 0.6,
+  },
+  typingDot3: {
+    opacity: 0.8,
+  },
+  typingText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    fontStyle: 'italic',
   },
 });
