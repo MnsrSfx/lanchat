@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, MapPin, Calendar, ChevronRight, Check, Globe } from 'lucide-react-native';
+import { Camera, MapPin, Calendar, ChevronRight, Check, Globe, User } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { LANGUAGES, PROFICIENCY_LEVELS } from '@/constants/languages';
 import { Language } from '@/types';
@@ -32,6 +32,8 @@ export default function ProfileSetupScreen() {
   const [learningLanguages, setLearningLanguages] = useState<Language[]>(user?.learningLanguages || []);
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [showLearningPicker, setShowLearningPicker] = useState(false);
+  const [name, setName] = useState(user?.name || '');
+  const [errors, setErrors] = useState<{ name?: string; age?: string; country?: string }>({});
 
   const pickImage = async () => {
     if (photos.length >= 4) {
@@ -74,6 +76,9 @@ export default function ProfileSetupScreen() {
   };
 
   const handleNext = () => {
+    if (step === 1 && !validateStep1()) {
+      return;
+    }
     if (step < 3) {
       setStep(step + 1);
     } else {
@@ -84,11 +89,12 @@ export default function ProfileSetupScreen() {
   const handleSave = async () => {
     try {
       await updateProfile({
+        name: name.trim(),
         avatar: photos[0] || '',
         photos,
         bio,
-        country,
-        city,
+        country: country.trim(),
+        city: city.trim(),
         age: parseInt(age) || 0,
         nativeLanguage: nativeLanguage || user?.nativeLanguage,
         learningLanguages,
@@ -105,8 +111,40 @@ export default function ProfileSetupScreen() {
     }
   }, [isAuthenticated, needsProfileSetup, isUpdateLoading, router]);
 
+  const validateStep1 = () => {
+    const newErrors: { name?: string; age?: string; country?: string } = {};
+    let isValid = true;
+
+    if (!name.trim()) {
+      newErrors.name = 'Name is required';
+      isValid = false;
+    } else if (name.trim().length < 2) {
+      newErrors.name = 'Name must be at least 2 characters';
+      isValid = false;
+    }
+
+    if (!age.trim()) {
+      newErrors.age = 'Age is required';
+      isValid = false;
+    } else {
+      const ageNum = parseInt(age);
+      if (isNaN(ageNum) || ageNum < 13 || ageNum > 99) {
+        newErrors.age = 'Please enter a valid age (13-99)';
+        isValid = false;
+      }
+    }
+
+    if (!country.trim()) {
+      newErrors.country = 'Country is required';
+      isValid = false;
+    }
+
+    setErrors(newErrors);
+    return isValid;
+  };
+
   const canProceed = () => {
-    if (step === 1) return photos.length > 0 || bio;
+    if (step === 1) return name.trim().length >= 2 && age.trim() && parseInt(age) >= 13 && country.trim();
     if (step === 2) return nativeLanguage;
     if (step === 3) return learningLanguages.length > 0;
     return true;
@@ -116,6 +154,22 @@ export default function ProfileSetupScreen() {
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>Set Up Your Profile</Text>
       <Text style={styles.stepSubtitle}>Add a photo and tell us about yourself</Text>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Full Name <Text style={styles.required}>*</Text></Text>
+        <View style={[styles.inputWithIcon, errors.name && styles.inputError]}>
+          <User size={18} color={Colors.light.textSecondary} />
+          <TextInput
+            style={styles.inputInner}
+            placeholder="Enter your full name"
+            placeholderTextColor={Colors.light.textSecondary}
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+          />
+        </View>
+        {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+      </View>
 
       <View style={styles.photosGrid}>
         {photos.map((photo, index) => (
@@ -136,7 +190,7 @@ export default function ProfileSetupScreen() {
           </TouchableOpacity>
         )}
       </View>
-      <Text style={styles.photoHint}>{photos.length}/4 photos</Text>
+      <Text style={styles.photoHint}>{photos.length}/4 photos (optional)</Text>
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Bio</Text>
@@ -155,8 +209,8 @@ export default function ProfileSetupScreen() {
 
       <View style={styles.row}>
         <View style={[styles.inputGroup, { flex: 1 }]}>
-          <Text style={styles.label}>Country</Text>
-          <View style={styles.inputWithIcon}>
+          <Text style={styles.label}>Country <Text style={styles.required}>*</Text></Text>
+          <View style={[styles.inputWithIcon, errors.country && styles.inputError]}>
             <MapPin size={18} color={Colors.light.textSecondary} />
             <TextInput
               style={styles.inputInner}
@@ -166,13 +220,14 @@ export default function ProfileSetupScreen() {
               onChangeText={setCountry}
             />
           </View>
+          {errors.country && <Text style={styles.errorText}>{errors.country}</Text>}
         </View>
         <View style={{ width: 12 }} />
         <View style={[styles.inputGroup, { flex: 1 }]}>
           <Text style={styles.label}>City</Text>
           <TextInput
             style={styles.input}
-            placeholder="City"
+            placeholder="City (optional)"
             placeholderTextColor={Colors.light.textSecondary}
             value={city}
             onChangeText={setCity}
@@ -181,8 +236,8 @@ export default function ProfileSetupScreen() {
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Age</Text>
-        <View style={styles.inputWithIcon}>
+        <Text style={styles.label}>Age <Text style={styles.required}>*</Text></Text>
+        <View style={[styles.inputWithIcon, errors.age && styles.inputError]}>
           <Calendar size={18} color={Colors.light.textSecondary} />
           <TextInput
             style={styles.inputInner}
@@ -194,6 +249,7 @@ export default function ProfileSetupScreen() {
             maxLength={2}
           />
         </View>
+        {errors.age && <Text style={styles.errorText}>{errors.age}</Text>}
       </View>
     </View>
   );
@@ -659,5 +715,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: '#fff',
+  },
+  required: {
+    color: Colors.light.error,
+  },
+  inputError: {
+    borderColor: Colors.light.error,
+  },
+  errorText: {
+    color: Colors.light.error,
+    fontSize: 12,
+    marginTop: 4,
   },
 });
