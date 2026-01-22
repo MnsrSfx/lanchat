@@ -43,6 +43,8 @@ import {
   Flag,
   Check,
   CheckCheck,
+  Reply,
+  CornerDownRight,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
 import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot, updateDoc } from 'firebase/firestore';
@@ -71,6 +73,7 @@ export default function ChatScreen() {
   const [showImageGallery, setShowImageGallery] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -167,6 +170,10 @@ export default function ChatScreen() {
             voiceDuration: data.voiceDuration,
             createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
             isRead: data.isRead || false,
+            replyToId: data.replyToId,
+            replyToContent: data.replyToContent,
+            replyToSenderId: data.replyToSenderId,
+            replyToType: data.replyToType,
           };
         });
         setMessages(fetchedMessages);
@@ -422,7 +429,7 @@ export default function ChatScreen() {
       }, { merge: true });
 
       const messagesRef = collection(db, 'chats', chatId, 'messages');
-      await addDoc(messagesRef, {
+      const messageData: any = {
         senderId: currentUser.uid,
         senderName: currentUser.name || 'Unknown',
         content: messageContent,
@@ -430,11 +437,21 @@ export default function ChatScreen() {
         imageUrl: imageUrl,
         createdAt: serverTimestamp(),
         isRead: false,
-      });
+      };
+
+      if (replyingTo) {
+        messageData.replyToId = replyingTo.id;
+        messageData.replyToContent = replyingTo.type === 'voice' ? 'Voice message' : (replyingTo.type === 'image' ? 'Photo' : replyingTo.content);
+        messageData.replyToSenderId = replyingTo.senderId;
+        messageData.replyToType = replyingTo.type;
+      }
+
+      await addDoc(messagesRef, messageData);
 
       console.log('✅ Message sent successfully');
       setInputText('');
       setSelectedImage(null);
+      setReplyingTo(null);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       
 
@@ -648,6 +665,28 @@ export default function ChatScreen() {
     setSelectedMessageId(null);
   };
 
+  const handleReplyMessage = () => {
+    if (selectedMessageId) {
+      const message = messages.find(m => m.id === selectedMessageId);
+      if (message) {
+        setReplyingTo(message);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+    }
+    setShowMessageMenu(false);
+    setSelectedMessageId(null);
+  };
+
+  const cancelReply = () => {
+    setReplyingTo(null);
+  };
+
+  const getReplyPreviewText = (message: Message) => {
+    if (message.type === 'voice') return 'Voice message';
+    if (message.type === 'image') return 'Photo';
+    return message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content;
+  };
+
   const handlePlayVoice = async (messageId: string, voiceUrl: string) => {
     try {
       if (playingMessageId === messageId && playingSound) {
@@ -685,6 +724,7 @@ export default function ChatScreen() {
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isOwn = item.senderId === currentUser?.uid;
     const isPlaying = playingMessageId === item.id;
+    const isReplyFromMe = item.replyToSenderId === currentUser?.uid;
 
     return (
       <View style={[styles.messageWrapper, isOwn ? styles.messageWrapperOwn : styles.messageWrapperOther]}>
@@ -692,6 +732,19 @@ export default function ChatScreen() {
           style={[styles.messageBubble, isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther]}
           onLongPress={() => handleLongPressMessage(item.id)}
         >
+          {item.replyToId && (
+            <View style={[styles.replyContainer, isOwn ? styles.replyContainerOwn : styles.replyContainerOther]}>
+              <View style={[styles.replyBar, isOwn ? styles.replyBarOwn : styles.replyBarOther]} />
+              <View style={styles.replyContent}>
+                <Text style={[styles.replyName, isOwn && styles.replyNameOwn]}>
+                  {isReplyFromMe ? 'You' : user?.name || 'Unknown'}
+                </Text>
+                <Text style={[styles.replyText, isOwn && styles.replyTextOwn]} numberOfLines={1}>
+                  {item.replyToType === 'voice' ? '🎤 Voice message' : (item.replyToType === 'image' ? '📷 Photo' : item.replyToContent)}
+                </Text>
+              </View>
+            </View>
+          )}
           {item.type === 'voice' ? (
             <View style={styles.voiceContent}>
               <TouchableOpacity 
@@ -812,6 +865,23 @@ export default function ChatScreen() {
           </View>
         )}
 
+        {replyingTo && (
+          <View style={styles.replyPreviewContainer}>
+            <View style={styles.replyPreviewBar} />
+            <View style={styles.replyPreviewContent}>
+              <Text style={styles.replyPreviewName}>
+                {replyingTo.senderId === currentUser?.uid ? 'You' : user?.name || 'Unknown'}
+              </Text>
+              <Text style={styles.replyPreviewText} numberOfLines={1}>
+                {getReplyPreviewText(replyingTo)}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={cancelReply} style={styles.replyPreviewClose}>
+              <X size={18} color={Colors.light.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {selectedImage && (
           <View style={styles.imagePreview}>
             <Image source={{ uri: selectedImage }} style={styles.previewImage} />
@@ -897,6 +967,11 @@ export default function ChatScreen() {
       >
         <Pressable style={styles.modalOverlay} onPress={() => setShowMessageMenu(false)}>
           <View style={styles.messageMenu}>
+            <TouchableOpacity style={styles.menuOption} onPress={handleReplyMessage}>
+              <Reply size={20} color={Colors.light.tint} />
+              <Text style={styles.menuOptionText}>Reply</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.menuOption} onPress={handleTranslateMessage}>
               <Languages size={20} color={Colors.light.tint} />
               <Text style={styles.menuOptionText}>Translate</Text>
@@ -1278,5 +1353,79 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.light.textSecondary,
     fontStyle: 'italic',
+  },
+  replyContainer: {
+    flexDirection: 'row',
+    marginBottom: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  replyContainerOwn: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  replyContainerOther: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  replyBar: {
+    width: 3,
+    borderRadius: 2,
+  },
+  replyBarOwn: {
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
+  replyBarOther: {
+    backgroundColor: Colors.light.tint,
+  },
+  replyContent: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  replyName: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: Colors.light.tint,
+    marginBottom: 2,
+  },
+  replyNameOwn: {
+    color: 'rgba(255,255,255,0.9)',
+  },
+  replyText: {
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  replyTextOwn: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  replyPreviewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.light.surface,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.light.tint,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  replyPreviewBar: {
+    width: 0,
+  },
+  replyPreviewContent: {
+    flex: 1,
+  },
+  replyPreviewName: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: Colors.light.tint,
+    marginBottom: 2,
+  },
+  replyPreviewText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+  },
+  replyPreviewClose: {
+    padding: 4,
   },
 });

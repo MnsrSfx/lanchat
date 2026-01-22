@@ -36,6 +36,10 @@ export interface Message {
   imageUrl?: string;
   createdAt: Date;
   isRead: boolean;
+  replyToId?: string;
+  replyToContent?: string;
+  replyToSenderId?: string;
+  replyToType?: 'text' | 'voice' | 'image';
 }
 
 export interface Chat {
