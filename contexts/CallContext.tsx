@@ -431,25 +431,34 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const endCall = useCallback(async () => {
     const callToEnd = activeCall || incomingCall;
     
-    if (!callToEnd?.id || !db) {
-      console.error('❌ Cannot end call - no active call');
-      return;
-    }
-
     if (isEndingCallRef.current) {
       console.log('📞 Already ending call, skipping');
       return;
     }
-    isEndingCallRef.current = true;
 
     if (callTimeoutRef.current) {
       clearTimeout(callTimeoutRef.current);
       callTimeoutRef.current = null;
     }
 
+    // Always cleanup local state even if no active call
+    await webRTCService.cleanup();
+    stopRingtone();
+    setActiveCall(null);
+    setIncomingCall(null);
+    setIsMuted(false);
+    setConnectionState(null);
+    setIceConnectionState(null);
+    
+    if (!callToEnd?.id || !db) {
+      console.log('📞 No active call to end, cleaned up local state');
+      return;
+    }
+
+    isEndingCallRef.current = true;
+
     try {
       console.log('📞 Ending call:', callToEnd.id);
-      await webRTCService.cleanup();
       
       const callDocRef = doc(db, 'calls', callToEnd.id);
       await updateDoc(callDocRef, {
@@ -459,14 +468,8 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       });
       
       console.log('📞 Call ended successfully');
-      stopRingtone();
-      setActiveCall(null);
-      setIncomingCall(null);
-      setIsMuted(false);
-      setConnectionState(null);
-      setIceConnectionState(null);
     } catch (error) {
-      console.error('❌ Error ending call:', error);
+      console.error('❌ Error ending call in Firestore:', error);
     } finally {
       isEndingCallRef.current = false;
     }

@@ -111,12 +111,12 @@ export default function CallScreen() {
           Animated.timing(pulseAnim, {
             toValue: 1.2,
             duration: 1000,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== 'web',
           }),
           Animated.timing(pulseAnim, {
             toValue: 1,
             duration: 1000,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== 'web',
           }),
         ])
       ).start();
@@ -140,22 +140,38 @@ export default function CallScreen() {
     };
   }, [activeCall?.status]);
 
-  const hasCallEnded = useRef(false);
+  const hasNavigatedAway = useRef(false);
   const wasConnected = useRef(false);
+  const callStartedRef = useRef(false);
 
   useEffect(() => {
     if (activeCall?.status === 'accepted') {
       wasConnected.current = true;
     }
-  }, [activeCall?.status]);
+    if (activeCall) {
+      callStartedRef.current = true;
+    }
+  }, [activeCall?.status, activeCall]);
 
   useEffect(() => {
-    if (activeCall === null && wasConnected.current && !hasCallEnded.current) {
-      hasCallEnded.current = true;
+    if (hasNavigatedAway.current) return;
+    
+    const shouldGoBack = 
+      (activeCall === null && callStartedRef.current) ||
+      activeCall?.status === 'ended' ||
+      activeCall?.status === 'declined' ||
+      activeCall?.status === 'missed';
+    
+    if (shouldGoBack) {
+      hasNavigatedAway.current = true;
       console.log('📞 Call ended, going back');
       setTimeout(() => {
-        router.back();
-      }, 500);
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)/chats');
+        }
+      }, 1000);
     }
   }, [activeCall]);
 
@@ -206,8 +222,19 @@ export default function CallScreen() {
   };
 
   const handleEndCall = async () => {
+    if (hasNavigatedAway.current) return;
+    
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     await endCall();
+    
+    hasNavigatedAway.current = true;
+    setTimeout(() => {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)/chats');
+      }
+    }, 500);
   };
 
   const handleToggleMute = () => {
