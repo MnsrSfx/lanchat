@@ -40,8 +40,10 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const [isMuted, setIsMuted] = useState(false);
   const [connectionState, setConnectionState] = useState<string | null>(null);
   const [iceConnectionState, setIceConnectionState] = useState<string | null>(null);
-  const ringtoneRef = useRef<AudioPlayer | null>(null);
-  const ringbackRef = useRef<AudioPlayer | null>(null);
+  const ringtoneRef = useRef<AudioPlayer | HTMLAudioElement | null>(null);
+  const ringbackRef = useRef<AudioPlayer | HTMLAudioElement | null>(null);
+  const isRingtonePlayingRef = useRef(false);
+  const isRingbackPlayingRef = useRef(false);
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isWebRTCSupported = webRTCService.isSupported();
   const isEndingCallRef = useRef(false);
@@ -99,8 +101,13 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   }, [handleWebRTCCallEnded]);
 
   const playRingtone = useCallback(async () => {
+    if (isRingtonePlayingRef.current) {
+      console.log('🔔 Ringtone already playing, skipping');
+      return;
+    }
+    
     try {
-      const ringtoneUrl = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+      const ringtoneUrl = 'https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a73467.mp3';
       
       if (Platform.OS === 'web') {
         console.log('🔔 Web platform - playing ringtone with HTML5 Audio');
@@ -108,9 +115,19 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
           const audio = new Audio(ringtoneUrl);
           audio.loop = true;
           audio.volume = 1.0;
-          (ringtoneRef as any).current = audio;
-          await audio.play();
-          console.log('🔔 Web ringtone playing');
+          audio.preload = 'auto';
+          ringtoneRef.current = audio;
+          
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.then(() => {
+              isRingtonePlayingRef.current = true;
+              console.log('🔔 Web ringtone playing');
+            }).catch((error) => {
+              console.warn('⚠️ Web ringtone autoplay blocked:', error.message);
+              isRingtonePlayingRef.current = false;
+            });
+          }
         } catch (webError) {
           console.error('❌ Web audio error:', webError);
         }
@@ -123,6 +140,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       player.loop = true;
       ringtoneRef.current = player;
       player.play();
+      isRingtonePlayingRef.current = true;
       console.log('🔔 Playing ringtone');
     } catch (error) {
       console.error('❌ Error playing ringtone:', error);
@@ -130,33 +148,41 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   }, []);
 
   const stopRingtone = useCallback(async () => {
-    console.log('🔕 Attempting to stop ringtone, ref exists:', !!ringtoneRef.current);
+    console.log('🔕 Attempting to stop ringtone, ref exists:', !!ringtoneRef.current, 'isPlaying:', isRingtonePlayingRef.current);
+    isRingtonePlayingRef.current = false;
+    
     if (ringtoneRef.current) {
       try {
         if (Platform.OS === 'web') {
-          const audio = ringtoneRef.current as any;
+          const audio = ringtoneRef.current as HTMLAudioElement;
           if (audio && typeof audio.pause === 'function') {
             audio.pause();
             audio.currentTime = 0;
             audio.src = '';
+            audio.load();
             console.log('🔕 Web ringtone stopped');
           }
         } else {
           (ringtoneRef.current as AudioPlayer).pause();
           (ringtoneRef.current as AudioPlayer).release();
         }
-        ringtoneRef.current = null;
-        console.log('🔕 Stopped ringtone successfully');
       } catch (error) {
         console.error('❌ Error stopping ringtone:', error);
+      } finally {
         ringtoneRef.current = null;
       }
     }
+    console.log('🔕 Stopped ringtone successfully');
   }, []);
 
   const playRingback = useCallback(async () => {
+    if (isRingbackPlayingRef.current) {
+      console.log('🔔 Ringback already playing, skipping');
+      return;
+    }
+    
     try {
-      const ringbackUrl = 'https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3';
+      const ringbackUrl = 'https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3';
       
       if (Platform.OS === 'web') {
         console.log('🔔 Web platform - playing ringback with HTML5 Audio');
@@ -164,9 +190,19 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
           const audio = new Audio(ringbackUrl);
           audio.loop = true;
           audio.volume = 0.7;
-          (ringbackRef as any).current = audio;
-          await audio.play();
-          console.log('🔔 Web ringback playing');
+          audio.preload = 'auto';
+          ringbackRef.current = audio;
+          
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.then(() => {
+              isRingbackPlayingRef.current = true;
+              console.log('🔔 Web ringback playing');
+            }).catch((error) => {
+              console.warn('⚠️ Web ringback autoplay blocked:', error.message);
+              isRingbackPlayingRef.current = false;
+            });
+          }
         } catch (webError) {
           console.error('❌ Web ringback audio error:', webError);
         }
@@ -179,6 +215,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       player.loop = true;
       ringbackRef.current = player;
       player.play();
+      isRingbackPlayingRef.current = true;
       console.log('🔔 Playing ringback tone (caller)');
     } catch (error) {
       console.error('❌ Error playing ringback:', error);
@@ -186,28 +223,31 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   }, []);
 
   const stopRingback = useCallback(async () => {
-    console.log('🔕 Attempting to stop ringback, ref exists:', !!ringbackRef.current);
+    console.log('🔕 Attempting to stop ringback, ref exists:', !!ringbackRef.current, 'isPlaying:', isRingbackPlayingRef.current);
+    isRingbackPlayingRef.current = false;
+    
     if (ringbackRef.current) {
       try {
         if (Platform.OS === 'web') {
-          const audio = ringbackRef.current as any;
+          const audio = ringbackRef.current as HTMLAudioElement;
           if (audio && typeof audio.pause === 'function') {
             audio.pause();
             audio.currentTime = 0;
             audio.src = '';
+            audio.load();
             console.log('🔕 Web ringback stopped');
           }
         } else {
           (ringbackRef.current as AudioPlayer).pause();
           (ringbackRef.current as AudioPlayer).release();
         }
-        ringbackRef.current = null;
-        console.log('🔕 Stopped ringback tone successfully');
       } catch (error) {
         console.error('❌ Error stopping ringback:', error);
+      } finally {
         ringbackRef.current = null;
       }
     }
+    console.log('🔕 Stopped ringback tone successfully');
   }, []);
 
   useEffect(() => {
@@ -352,9 +392,19 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         }
       } else if (updatedCall.status === 'accepted') {
         // Call was accepted - stop all ringing sounds for both sides
-        console.log('📞 Call accepted - stopping all ring sounds');
+        console.log('📞 Call accepted - stopping ALL ring sounds immediately');
+        
+        // Force stop all audio
         stopRingtone();
         stopRingback();
+        
+        // Double-check stop after small delay
+        setTimeout(() => {
+          stopRingtone();
+          stopRingback();
+          console.log('📞 Double-checked ring sounds stopped');
+        }, 100);
+        
         setActiveCall(updatedCall);
       } else if (updatedCall.status !== activeCall.status) {
         console.log('📞 Call status changed from', activeCall.status, 'to', updatedCall.status);
@@ -480,9 +530,25 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       
       const callDocRef = doc(db, 'calls', incomingCall.id);
       
-      // Stop all ring sounds immediately
+      // Stop all ring sounds immediately and forcefully
+      console.log('📞 Forcefully stopping all ring sounds');
       stopRingtone();
       stopRingback();
+      
+      // Also try to stop any stray audio elements on web
+      if (Platform.OS === 'web') {
+        try {
+          document.querySelectorAll('audio').forEach((audio) => {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.src = '';
+          });
+          console.log('📞 Stopped all audio elements on page');
+        } catch (e) {
+          console.warn('⚠️ Could not stop all audio elements:', e);
+        }
+      }
+      
       console.log('📞 All ring sounds stopped after accepting call');
       
       const acceptedCall = { ...incomingCall, status: 'accepted' as const, answeredAt: new Date() };
