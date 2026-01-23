@@ -100,13 +100,25 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
 
   const playRingtone = useCallback(async () => {
     try {
+      const ringtoneUrl = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+      
       if (Platform.OS === 'web') {
-        console.log('🔔 Web platform - ringtone skipped but call modal should show');
+        console.log('🔔 Web platform - playing ringtone with HTML5 Audio');
+        try {
+          const audio = new Audio(ringtoneUrl);
+          audio.loop = true;
+          audio.volume = 1.0;
+          (ringtoneRef as any).current = audio;
+          await audio.play();
+          console.log('🔔 Web ringtone playing');
+        } catch (webError) {
+          console.error('❌ Web audio error:', webError);
+        }
         return;
       }
       
       const player = createAudioPlayer(
-        { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' }
+        { uri: ringtoneUrl }
       );
       player.loop = true;
       ringtoneRef.current = player;
@@ -120,8 +132,14 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const stopRingtone = useCallback(async () => {
     if (ringtoneRef.current) {
       try {
-        ringtoneRef.current.pause();
-        ringtoneRef.current.release();
+        if (Platform.OS === 'web') {
+          const audio = ringtoneRef.current as any;
+          audio.pause();
+          audio.currentTime = 0;
+        } else {
+          (ringtoneRef.current as AudioPlayer).pause();
+          (ringtoneRef.current as AudioPlayer).release();
+        }
         ringtoneRef.current = null;
         console.log('🔕 Stopped ringtone');
       } catch (error) {
@@ -132,13 +150,25 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
 
   const playRingback = useCallback(async () => {
     try {
+      const ringbackUrl = 'https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3';
+      
       if (Platform.OS === 'web') {
-        console.log('🔔 Web platform - ringback skipped');
+        console.log('🔔 Web platform - playing ringback with HTML5 Audio');
+        try {
+          const audio = new Audio(ringbackUrl);
+          audio.loop = true;
+          audio.volume = 0.7;
+          (ringbackRef as any).current = audio;
+          await audio.play();
+          console.log('🔔 Web ringback playing');
+        } catch (webError) {
+          console.error('❌ Web ringback audio error:', webError);
+        }
         return;
       }
       
       const player = createAudioPlayer(
-        { uri: 'https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3' }
+        { uri: ringbackUrl }
       );
       player.loop = true;
       ringbackRef.current = player;
@@ -152,8 +182,14 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const stopRingback = useCallback(async () => {
     if (ringbackRef.current) {
       try {
-        ringbackRef.current.pause();
-        ringbackRef.current.release();
+        if (Platform.OS === 'web') {
+          const audio = ringbackRef.current as any;
+          audio.pause();
+          audio.currentTime = 0;
+        } else {
+          (ringbackRef.current as AudioPlayer).pause();
+          (ringbackRef.current as AudioPlayer).release();
+        }
         ringbackRef.current = null;
         console.log('🔕 Stopped ringback tone');
       } catch (error) {
