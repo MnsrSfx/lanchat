@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { router } from 'expo-router';
-import { ArrowLeft, Search, MessageCircle, Phone, Video } from 'lucide-react-native';
+import { ArrowLeft, Search, MessageCircle } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/src/firebase';
 import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, DocumentSnapshot, writeBatch } from 'firebase/firestore';
@@ -365,14 +365,7 @@ export default function ChatsScreen() {
           <Text style={styles.headerTitle}>Chats</Text>
         </View>
 
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.iconButton}>
-            <Phone size={24} color={Colors.light.tint} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconButton}>
-            <Video size={24} color={Colors.light.tint} />
-          </TouchableOpacity>
-        </View>
+<View style={styles.headerRight} />
       </View>
 
       {/* Arama barı */}
