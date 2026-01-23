@@ -41,6 +41,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const [connectionState, setConnectionState] = useState<string | null>(null);
   const [iceConnectionState, setIceConnectionState] = useState<string | null>(null);
   const ringtoneRef = useRef<AudioPlayer | null>(null);
+  const ringbackRef = useRef<AudioPlayer | null>(null);
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isWebRTCSupported = webRTCService.isSupported();
   const isEndingCallRef = useRef(false);
@@ -125,6 +126,38 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         console.log('🔕 Stopped ringtone');
       } catch (error) {
         console.error('❌ Error stopping ringtone:', error);
+      }
+    }
+  }, []);
+
+  const playRingback = useCallback(async () => {
+    try {
+      if (Platform.OS === 'web') {
+        console.log('🔔 Web platform - ringback skipped');
+        return;
+      }
+      
+      const player = createAudioPlayer(
+        { uri: 'https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3' }
+      );
+      player.loop = true;
+      ringbackRef.current = player;
+      player.play();
+      console.log('🔔 Playing ringback tone (caller)');
+    } catch (error) {
+      console.error('❌ Error playing ringback:', error);
+    }
+  }, []);
+
+  const stopRingback = useCallback(async () => {
+    if (ringbackRef.current) {
+      try {
+        ringbackRef.current.pause();
+        ringbackRef.current.release();
+        ringbackRef.current = null;
+        console.log('🔕 Stopped ringback tone');
+      } catch (error) {
+        console.error('❌ Error stopping ringback:', error);
       }
     }
   }, []);
@@ -264,10 +297,16 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
           webRTCService.cleanup();
           setActiveCall(null);
           stopRingtone();
+          stopRingback();
           setIsMuted(false);
           setConnectionState(null);
           setIceConnectionState(null);
         }
+      } else if (updatedCall.status === 'accepted' && activeCall.status === 'ringing') {
+        // Call was accepted - stop ringback for caller
+        console.log('📞 Call accepted - stopping ringback');
+        stopRingback();
+        setActiveCall(updatedCall);
       } else if (updatedCall.status !== activeCall.status) {
         console.log('📞 Call status changed from', activeCall.status, 'to', updatedCall.status);
         setActiveCall(updatedCall);
@@ -278,7 +317,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       console.log('📞 Cleaning up active call listener');
       unsubscribe();
     };
-  }, [activeCall?.id, activeCall?.status, activeCall?.callerId, stopRingtone, user?.uid, isWebRTCSupported]);
+  }, [activeCall?.id, activeCall?.status, activeCall?.callerId, stopRingtone, stopRingback, user?.uid, isWebRTCSupported]);
 
   const initiateCall = useCallback(async (
     receiverId: string, 
@@ -323,6 +362,9 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       console.log('📞 Call ID:', callId);
       console.log('📞 Receiver should see incoming call now');
       console.log('📞 ====================================');
+
+      // Play ringback tone for caller
+      await playRingback();
 
       const newCall: Call = {
         id: callId,
@@ -372,7 +414,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       console.error('❌ Error initiating call:', error);
       return null;
     }
-  }, [user, isWebRTCSupported]);
+  }, [user, isWebRTCSupported, playRingback]);
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall?.id || !db) {
@@ -454,6 +496,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     // Always cleanup local state even if no active call
     await webRTCService.cleanup();
     stopRingtone();
+    stopRingback();
     setActiveCall(null);
     setIncomingCall(null);
     setIsMuted(false);
@@ -483,7 +526,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     } finally {
       isEndingCallRef.current = false;
     }
-  }, [activeCall, incomingCall, user?.uid, stopRingtone]);
+  }, [activeCall, incomingCall, user?.uid, stopRingtone, stopRingback]);
 
   const toggleMute = useCallback(() => {
     const newMutedState = !isMuted;
