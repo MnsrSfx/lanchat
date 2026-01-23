@@ -147,6 +147,21 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     }
   }, []);
 
+  const stopAllWebAudio = useCallback(() => {
+    if (Platform.OS === 'web') {
+      try {
+        document.querySelectorAll('audio').forEach((audio) => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.src = '';
+        });
+        console.log('🔕 Stopped all web audio elements');
+      } catch (e) {
+        console.warn('⚠️ Could not stop all audio elements:', e);
+      }
+    }
+  }, []);
+
   const stopRingtone = useCallback(async () => {
     console.log('🔕 Attempting to stop ringtone, ref exists:', !!ringtoneRef.current, 'isPlaying:', isRingtonePlayingRef.current);
     isRingtonePlayingRef.current = false;
@@ -397,13 +412,21 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         // Force stop all audio
         stopRingtone();
         stopRingback();
+        stopAllWebAudio();
         
         // Double-check stop after small delay
         setTimeout(() => {
           stopRingtone();
           stopRingback();
+          stopAllWebAudio();
           console.log('📞 Double-checked ring sounds stopped');
         }, 100);
+        
+        // Triple check after another delay
+        setTimeout(() => {
+          stopAllWebAudio();
+          console.log('📞 Triple-checked all audio stopped');
+        }, 300);
         
         setActiveCall(updatedCall);
       } else if (updatedCall.status !== activeCall.status) {
@@ -416,7 +439,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       console.log('📞 Cleaning up active call listener');
       unsubscribe();
     };
-  }, [activeCall?.id, activeCall?.status, activeCall?.callerId, stopRingtone, stopRingback, user?.uid, isWebRTCSupported]);
+  }, [activeCall?.id, activeCall?.status, activeCall?.callerId, stopRingtone, stopRingback, stopAllWebAudio, user?.uid, isWebRTCSupported]);
 
   const initiateCall = useCallback(async (
     receiverId: string, 
@@ -534,22 +557,17 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       console.log('📞 Forcefully stopping all ring sounds');
       stopRingtone();
       stopRingback();
-      
-      // Also try to stop any stray audio elements on web
-      if (Platform.OS === 'web') {
-        try {
-          document.querySelectorAll('audio').forEach((audio) => {
-            audio.pause();
-            audio.currentTime = 0;
-            audio.src = '';
-          });
-          console.log('📞 Stopped all audio elements on page');
-        } catch (e) {
-          console.warn('⚠️ Could not stop all audio elements:', e);
-        }
-      }
+      stopAllWebAudio();
       
       console.log('📞 All ring sounds stopped after accepting call');
+      
+      // Double check after small delay
+      setTimeout(() => {
+        stopRingtone();
+        stopRingback();
+        stopAllWebAudio();
+        console.log('📞 Double-checked sounds stopped in acceptCall');
+      }, 100);
       
       const acceptedCall = { ...incomingCall, status: 'accepted' as const, answeredAt: new Date() };
       setActiveCall(acceptedCall);
@@ -574,7 +592,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     } catch (error) {
       console.error('❌ Error accepting call:', error);
     }
-  }, [incomingCall, stopRingtone, stopRingback, isWebRTCSupported]);
+  }, [incomingCall, stopRingtone, stopRingback, stopAllWebAudio, isWebRTCSupported]);
 
   const declineCall = useCallback(async () => {
     if (!incomingCall?.id || !db) {
@@ -615,6 +633,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     await webRTCService.cleanup();
     stopRingtone();
     stopRingback();
+    stopAllWebAudio();
     setActiveCall(null);
     setIncomingCall(null);
     setIsMuted(false);
@@ -644,7 +663,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     } finally {
       isEndingCallRef.current = false;
     }
-  }, [activeCall, incomingCall, user?.uid, stopRingtone, stopRingback]);
+  }, [activeCall, incomingCall, user?.uid, stopRingtone, stopRingback, stopAllWebAudio]);
 
   const toggleMute = useCallback(() => {
     const newMutedState = !isMuted;
