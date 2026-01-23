@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -29,7 +29,7 @@ export default function CallScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const params = useGlobalSearchParams<{ mode?: string }>();
   const isAccepting = params.mode === 'accept';
-  const { activeCall, initiateCall, endCall, isMuted, toggleMute, connectionState, isWebRTCSupported } = useCall();
+  const { activeCall, initiateCall, endCall, isMuted, toggleMute, connectionState, iceConnectionState, isWebRTCSupported } = useCall();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [duration, setDuration] = useState(0);
@@ -143,6 +143,16 @@ export default function CallScreen() {
   const hasNavigatedAway = useRef(false);
   const wasConnected = useRef(false);
   const callStartedRef = useRef(false);
+  const targetUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (userId) {
+      targetUserIdRef.current = userId;
+    } else if (activeCall) {
+      const otherUserId = isAccepting ? activeCall.callerId : activeCall.receiverId;
+      targetUserIdRef.current = otherUserId;
+    }
+  }, [userId, activeCall, isAccepting]);
 
   useEffect(() => {
     if (activeCall?.status === 'accepted') {
@@ -152,6 +162,17 @@ export default function CallScreen() {
       callStartedRef.current = true;
     }
   }, [activeCall?.status, activeCall]);
+
+  const navigateToChat = useCallback(() => {
+    const chatUserId = targetUserIdRef.current || userId;
+    if (chatUserId) {
+      console.log('📞 Navigating to chat with:', chatUserId);
+      router.replace(`/chat/${chatUserId}`);
+    } else {
+      console.log('📞 No target user, going to chats');
+      router.replace('/(tabs)/chats');
+    }
+  }, [userId]);
 
   useEffect(() => {
     if (hasNavigatedAway.current) return;
@@ -164,16 +185,12 @@ export default function CallScreen() {
     
     if (shouldGoBack) {
       hasNavigatedAway.current = true;
-      console.log('📞 Call ended, going back');
+      console.log('📞 Call ended, navigating to chat');
       setTimeout(() => {
-        if (router.canGoBack()) {
-          router.back();
-        } else {
-          router.replace('/(tabs)/chats');
-        }
+        navigateToChat();
       }, 1000);
     }
-  }, [activeCall]);
+  }, [activeCall, navigateToChat]);
 
   if (loading) {
     return (
@@ -225,15 +242,11 @@ export default function CallScreen() {
     if (hasNavigatedAway.current) return;
     
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    hasNavigatedAway.current = true;
     await endCall();
     
-    hasNavigatedAway.current = true;
     setTimeout(() => {
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace('/(tabs)/chats');
-      }
+      navigateToChat();
     }, 500);
   };
 
@@ -248,7 +261,7 @@ export default function CallScreen() {
   };
 
   const isRinging = activeCall?.status === 'ringing';
-  const isConnected = connectionState === 'connected';
+  const isConnected = connectionState === 'connected' || iceConnectionState === 'connected' || iceConnectionState === 'completed';
 
   return (
     <SafeAreaView style={styles.container}>

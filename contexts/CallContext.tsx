@@ -45,12 +45,18 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const isWebRTCSupported = webRTCService.isSupported();
   const isEndingCallRef = useRef(false);
 
+  const activeCallRef = useRef<Call | null>(null);
+  
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
+
   const handleWebRTCCallEnded = useCallback(async () => {
     if (isEndingCallRef.current) return;
     console.log('📞 WebRTC triggered call end');
     isEndingCallRef.current = true;
     
-    const callToEnd = activeCall;
+    const callToEnd = activeCallRef.current;
     if (callToEnd?.id && db) {
       try {
         const callDocRef = doc(db, 'calls', callToEnd.id);
@@ -68,9 +74,10 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     setConnectionState(null);
     setIceConnectionState(null);
     isEndingCallRef.current = false;
-  }, [activeCall]);
+  }, []);
 
   useEffect(() => {
+    console.log('📞 Setting WebRTC callbacks...');
     webRTCService.setCallbacks({
       onConnectionStateChange: (state) => {
         console.log('📞 WebRTC connection state changed:', state);
@@ -79,6 +86,9 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       onIceConnectionStateChange: (state) => {
         console.log('📞 WebRTC ICE connection state changed:', state);
         setIceConnectionState(state);
+        if (state === 'connected' || state === 'completed') {
+          setConnectionState('connected');
+        }
       },
       onError: (error) => {
         console.error('📞 WebRTC error:', error);
