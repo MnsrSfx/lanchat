@@ -13,12 +13,19 @@ const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
 ];
+
+const ICE_CANDIDATE_CALLER = 'callerCandidates';
+const ICE_CANDIDATE_RECEIVER = 'receiverCandidates';
 
 type WebRTCCallbacks = {
   onRemoteStream?: (stream: MediaStream) => void;
   onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
+  onIceConnectionStateChange?: (state: RTCIceConnectionState) => void;
   onError?: (error: Error) => void;
+  onCallEnded?: () => void;
 };
 
 class WebRTCService {
@@ -33,6 +40,10 @@ class WebRTCService {
   private callbacks: WebRTCCallbacks = {};
   private isCaller: boolean = false;
   private audioElement: HTMLAudioElement | null = null;
+  private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
+  private connectionCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private lastActivityTime: number = Date.now();
+  private isCleanedUp: boolean = false;
 
   isSupported(): boolean {
     if (Platform.OS === 'web') {
@@ -84,21 +95,39 @@ class WebRTCService {
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
       pc.onicecandidate = (event) => {
-        if (event.candidate && this.callId && db) {
+        if (event.candidate && this.callId && db && !this.isCleanedUp) {
           console.log('🧊 ICE candidate found:', event.candidate.candidate?.substring(0, 50));
-          const candidateCollection = this.isCaller ? 'callerCandidates' : 'calleeCandidates';
+          const candidateCollection = this.isCaller ? ICE_CANDIDATE_CALLER : ICE_CANDIDATE_RECEIVER;
           const candidateRef = doc(collection(db, 'calls', this.callId, candidateCollection));
-          setDoc(candidateRef, event.candidate.toJSON()).catch(console.error);
+          setDoc(candidateRef, event.candidate.toJSON()).catch((error) => {
+            console.error('❌ Error saving ICE candidate:', error);
+          });
         }
       };
 
       pc.oniceconnectionstatechange = () => {
         console.log('🧊 ICE connection state:', pc.iceConnectionState);
+        this.callbacks.onIceConnectionStateChange?.(pc.iceConnectionState);
+        
+        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+          console.log('⚠️ ICE connection issue, attempting restart...');
+          this.handleIceFailure(pc);
+        } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          this.lastActivityTime = Date.now();
+          this.startKeepAlive();
+        }
       };
 
       pc.onconnectionstatechange = () => {
         console.log('🔗 Connection state:', pc.connectionState);
         this.callbacks.onConnectionStateChange?.(pc.connectionState);
+        
+        if (pc.connectionState === 'failed') {
+          console.log('❌ Connection failed, ending call');
+          this.callbacks.onCallEnded?.();
+        } else if (pc.connectionState === 'connected') {
+          this.lastActivityTime = Date.now();
+        }
       };
 
       pc.ontrack = (event) => {
@@ -134,8 +163,10 @@ class WebRTCService {
       return false;
     }
 
+    this.isCleanedUp = false;
     this.callId = callId;
     this.isCaller = true;
+    this.lastActivityTime = Date.now();
 
     console.log('📞 Starting WebRTC call:', callId);
 
@@ -165,7 +196,7 @@ class WebRTCService {
       console.log('✅ Offer saved to Firestore');
 
       this.listenForAnswer(callId);
-      this.listenForIceCandidates(callId, 'calleeCandidates');
+      this.listenForIceCandidates(callId, ICE_CANDIDATE_RECEIVER);
 
       return true;
     } catch (error) {
@@ -181,8 +212,10 @@ class WebRTCService {
       return false;
     }
 
+    this.isCleanedUp = false;
     this.callId = callId;
     this.isCaller = false;
+    this.lastActivityTime = Date.now();
 
     console.log('📞 Answering WebRTC call:', callId);
 
@@ -227,7 +260,7 @@ class WebRTCService {
       });
       console.log('✅ Answer saved to Firestore');
 
-      this.listenForIceCandidates(callId, 'callerCandidates');
+      this.listenForIceCandidates(callId, ICE_CANDIDATE_CALLER);
 
       return true;
     } catch (error) {
@@ -263,22 +296,80 @@ class WebRTCService {
     
     const unsubscribe = onSnapshot(candidatesRef, (snapshot) => {
       snapshot.docChanges().forEach(async (change) => {
-        if (change.type === 'added' && this.peerConnection) {
+        if (change.type === 'added' && this.peerConnection && !this.isCleanedUp) {
           const candidateData = change.doc.data();
           console.log('🧊 Adding ICE candidate from', candidateCollection);
           try {
-            await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidateData));
+            if (this.peerConnection.remoteDescription) {
+              await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidateData));
+              this.lastActivityTime = Date.now();
+            } else {
+              console.log('⏳ Waiting for remote description before adding ICE candidate');
+            }
           } catch (error) {
             console.error('❌ Error adding ICE candidate:', error);
           }
         }
       });
+    }, (error) => {
+      console.error('❌ Error listening for ICE candidates:', error);
     });
 
-    if (candidateCollection === 'callerCandidates') {
+    if (candidateCollection === ICE_CANDIDATE_CALLER) {
       this.unsubscribeCallerCandidates = unsubscribe;
     } else {
       this.unsubscribeCalleeCandidates = unsubscribe;
+    }
+  }
+
+  private handleIceFailure(pc: RTCPeerConnection) {
+    if (this.isCleanedUp) return;
+    
+    try {
+      if (pc.restartIce) {
+        console.log('🔄 Restarting ICE...');
+        pc.restartIce();
+      }
+    } catch (error) {
+      console.error('❌ Error restarting ICE:', error);
+    }
+  }
+
+  private startKeepAlive() {
+    if (this.keepAliveInterval) return;
+    
+    console.log('💓 Starting keepalive...');
+    this.keepAliveInterval = setInterval(() => {
+      if (this.isCleanedUp) {
+        this.stopKeepAlive();
+        return;
+      }
+      
+      const timeSinceActivity = Date.now() - this.lastActivityTime;
+      
+      if (timeSinceActivity > 60000) {
+        console.log('⚠️ No activity for 60 seconds, connection may be stale');
+        if (this.peerConnection?.iceConnectionState === 'disconnected') {
+          console.log('❌ Connection lost, triggering end');
+          this.callbacks.onCallEnded?.();
+        }
+      }
+      
+      if (this.peerConnection?.connectionState === 'connected') {
+        this.lastActivityTime = Date.now();
+      }
+    }, 10000);
+  }
+
+  private stopKeepAlive() {
+    if (this.keepAliveInterval) {
+      clearInterval(this.keepAliveInterval);
+      this.keepAliveInterval = null;
+      console.log('💓 Keepalive stopped');
+    }
+    if (this.connectionCheckInterval) {
+      clearInterval(this.connectionCheckInterval);
+      this.connectionCheckInterval = null;
     }
   }
 
@@ -331,8 +422,16 @@ class WebRTCService {
   }
 
   async cleanup() {
+    if (this.isCleanedUp) {
+      console.log('🧹 WebRTC already cleaned up');
+      return;
+    }
+    
+    this.isCleanedUp = true;
     console.log('🧹 Cleaning up WebRTC...');
 
+    this.stopKeepAlive();
+    
     this.unsubscribeOffer?.();
     this.unsubscribeAnswer?.();
     this.unsubscribeCallerCandidates?.();
@@ -367,6 +466,8 @@ class WebRTCService {
     this.remoteStream = null;
     this.callbacks = {};
     this.isCaller = false;
+    this.isCleanedUp = false;
+    this.lastActivityTime = Date.now();
 
     console.log('✅ WebRTC cleanup complete');
   }
