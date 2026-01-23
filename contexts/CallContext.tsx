@@ -130,20 +130,26 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   }, []);
 
   const stopRingtone = useCallback(async () => {
+    console.log('🔕 Attempting to stop ringtone, ref exists:', !!ringtoneRef.current);
     if (ringtoneRef.current) {
       try {
         if (Platform.OS === 'web') {
           const audio = ringtoneRef.current as any;
-          audio.pause();
-          audio.currentTime = 0;
+          if (audio && typeof audio.pause === 'function') {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.src = '';
+            console.log('🔕 Web ringtone stopped');
+          }
         } else {
           (ringtoneRef.current as AudioPlayer).pause();
           (ringtoneRef.current as AudioPlayer).release();
         }
         ringtoneRef.current = null;
-        console.log('🔕 Stopped ringtone');
+        console.log('🔕 Stopped ringtone successfully');
       } catch (error) {
         console.error('❌ Error stopping ringtone:', error);
+        ringtoneRef.current = null;
       }
     }
   }, []);
@@ -180,20 +186,26 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   }, []);
 
   const stopRingback = useCallback(async () => {
+    console.log('🔕 Attempting to stop ringback, ref exists:', !!ringbackRef.current);
     if (ringbackRef.current) {
       try {
         if (Platform.OS === 'web') {
           const audio = ringbackRef.current as any;
-          audio.pause();
-          audio.currentTime = 0;
+          if (audio && typeof audio.pause === 'function') {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.src = '';
+            console.log('🔕 Web ringback stopped');
+          }
         } else {
           (ringbackRef.current as AudioPlayer).pause();
           (ringbackRef.current as AudioPlayer).release();
         }
         ringbackRef.current = null;
-        console.log('🔕 Stopped ringback tone');
+        console.log('🔕 Stopped ringback tone successfully');
       } catch (error) {
         console.error('❌ Error stopping ringback:', error);
+        ringbackRef.current = null;
       }
     }
   }, []);
@@ -338,9 +350,10 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
           setConnectionState(null);
           setIceConnectionState(null);
         }
-      } else if (updatedCall.status === 'accepted' && activeCall.status === 'ringing') {
-        // Call was accepted - stop ringback for caller
-        console.log('📞 Call accepted - stopping ringback');
+      } else if (updatedCall.status === 'accepted') {
+        // Call was accepted - stop all ringing sounds for both sides
+        console.log('📞 Call accepted - stopping all ring sounds');
+        stopRingtone();
         stopRingback();
         setActiveCall(updatedCall);
       } else if (updatedCall.status !== activeCall.status) {
@@ -467,7 +480,10 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       
       const callDocRef = doc(db, 'calls', incomingCall.id);
       
+      // Stop all ring sounds immediately
       stopRingtone();
+      stopRingback();
+      console.log('📞 All ring sounds stopped after accepting call');
       
       const acceptedCall = { ...incomingCall, status: 'accepted' as const, answeredAt: new Date() };
       setActiveCall(acceptedCall);
@@ -492,7 +508,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     } catch (error) {
       console.error('❌ Error accepting call:', error);
     }
-  }, [incomingCall, stopRingtone, isWebRTCSupported]);
+  }, [incomingCall, stopRingtone, stopRingback, isWebRTCSupported]);
 
   const declineCall = useCallback(async () => {
     if (!incomingCall?.id || !db) {
