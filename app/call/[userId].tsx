@@ -29,11 +29,11 @@ export default function CallScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const params = useGlobalSearchParams<{ mode?: string }>();
   const isAccepting = params.mode === 'accept';
-  const { activeCall, initiateCall, endCall, isMuted, toggleMute, connectionState, iceConnectionState, isWebRTCSupported } = useCall();
+  const { activeCall, initiateCall, endCall, isMuted, toggleMute, isSpeaker, toggleSpeaker, connectionState, iceConnectionState, isWebRTCSupported } = useCall();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [duration, setDuration] = useState(0);
-  const [isSpeaker, setIsSpeaker] = useState(false);
+  
   const [callInitiated, setCallInitiated] = useState(isAccepting);
 
   const displayName = isAccepting && activeCall 
@@ -255,8 +255,8 @@ export default function CallScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const toggleSpeaker = () => {
-    setIsSpeaker(!isSpeaker);
+  const handleToggleSpeaker = () => {
+    toggleSpeaker();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -326,15 +326,15 @@ export default function CallScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.controlButton, isSpeaker && styles.controlButtonActive]}
-                  onPress={toggleSpeaker}
+                  style={[styles.controlButton, !isSpeaker && styles.controlButtonActive]}
+                  onPress={handleToggleSpeaker}
                 >
                   {isSpeaker ? (
-                    <Volume2 size={24} color="#fff" />
+                    <Volume2 size={24} color={Colors.light.text} />
                   ) : (
-                    <VolumeX size={24} color={Colors.light.text} />
+                    <VolumeX size={24} color="#fff" />
                   )}
-                  <Text style={[styles.controlLabel, isSpeaker && styles.controlLabelActive]}>
+                  <Text style={[styles.controlLabel, !isSpeaker && styles.controlLabelActive]}>
                     Speaker
                   </Text>
                 </TouchableOpacity>

@@ -44,6 +44,8 @@ class WebRTCService {
   private connectionCheckInterval: ReturnType<typeof setInterval> | null = null;
   private lastActivityTime: number = Date.now();
   private isCleanedUp: boolean = false;
+  private isSpeakerOn: boolean = true;
+  private isMuted: boolean = false;
 
   isSupported(): boolean {
     if (Platform.OS === 'web') {
@@ -413,12 +415,61 @@ class WebRTCService {
   }
 
   toggleMute(muted: boolean) {
+    this.isMuted = muted;
+    console.log('🎤 toggleMute called, muted:', muted, 'localStream exists:', !!this.localStream);
+    
     if (this.localStream) {
-      this.localStream.getAudioTracks().forEach((track) => {
+      const audioTracks = this.localStream.getAudioTracks();
+      console.log('🎤 Found', audioTracks.length, 'audio tracks');
+      
+      audioTracks.forEach((track) => {
         track.enabled = !muted;
-        console.log('🎤 Microphone', muted ? 'muted' : 'unmuted');
+        console.log('🎤 Track', track.label, 'enabled:', track.enabled);
       });
+      console.log('🎤 Microphone', muted ? 'muted' : 'unmuted');
+    } else {
+      console.warn('⚠️ No local stream available for mute toggle');
     }
+  }
+
+  toggleSpeaker(speakerOn: boolean) {
+    this.isSpeakerOn = speakerOn;
+    console.log('🔊 toggleSpeaker called, speakerOn:', speakerOn);
+    
+    if (Platform.OS === 'web' && this.audioElement) {
+      try {
+        // On web, we can only control volume - true speaker routing requires native code
+        // When speaker is off, we reduce volume significantly to simulate earpiece
+        if (speakerOn) {
+          this.audioElement.volume = 1.0;
+          console.log('🔊 Speaker ON - volume set to 1.0');
+        } else {
+          this.audioElement.volume = 0.3;
+          console.log('🔊 Speaker OFF - volume set to 0.3 (simulating earpiece)');
+        }
+        
+        // Try to use setSinkId if available (for device selection)
+        const audioEl = this.audioElement as HTMLAudioElement & { setSinkId?: (sinkId: string) => Promise<void> };
+        if (typeof audioEl.setSinkId === 'function') {
+          navigator.mediaDevices.enumerateDevices().then(devices => {
+            const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+            console.log('🔊 Available audio outputs:', audioOutputs.map(d => d.label));
+          }).catch(e => console.warn('⚠️ Cannot enumerate devices:', e));
+        }
+      } catch (error) {
+        console.error('❌ Error toggling speaker:', error);
+      }
+    } else {
+      console.log('🔊 Speaker toggle - no audio element or not on web');
+    }
+  }
+
+  getMuteState(): boolean {
+    return this.isMuted;
+  }
+
+  getSpeakerState(): boolean {
+    return this.isSpeakerOn;
   }
 
   async cleanup() {
