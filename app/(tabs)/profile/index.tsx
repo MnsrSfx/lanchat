@@ -12,7 +12,7 @@ import {
   Linking,
   Platform,
 } from 'react-native';
-import { X, Mail, MessageCircle, ExternalLink } from 'lucide-react-native';
+import { X, Mail, MessageCircle, ExternalLink, ChevronLeft, Check } from 'lucide-react-native';
 import { router, Stack } from 'expo-router';
 import Avatar from '@/components/Avatar';
 import { 
@@ -249,9 +249,12 @@ export default function ProfileScreen() {
     >
       <View style={styles.modalContainer}>
         <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Privacy Settings</Text>
-          <TouchableOpacity onPress={() => setPrivacyModalVisible(false)} style={styles.closeButton}>
-            <X size={24} color={Colors.light.text} />
+          <TouchableOpacity onPress={() => setPrivacyModalVisible(false)} style={styles.backButton}>
+            <ChevronLeft size={24} color={Colors.light.text} />
+          </TouchableOpacity>
+          <Text style={styles.modalTitleCenter}>Privacy Settings</Text>
+          <TouchableOpacity onPress={() => setPrivacyModalVisible(false)} style={styles.doneButton}>
+            <Text style={styles.doneButtonText}>Done</Text>
           </TouchableOpacity>
         </View>
         <ScrollView style={styles.modalContent}>
@@ -691,6 +694,28 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 4,
+  },
+  backButton: {
+    padding: 4,
+    marginRight: 8,
+  },
+  doneButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 8,
+  },
+  doneButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: '#fff',
+  },
+  modalTitleCenter: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: Colors.light.text,
+    textAlign: 'center',
   },
   modalContent: {
     flex: 1,
