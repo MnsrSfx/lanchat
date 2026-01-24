@@ -23,7 +23,7 @@ interface MeteredIceServer {
 
 let cachedIceServers: RTCIceServer[] | null = null;
 let cacheTimestamp: number = 0;
-const CACHE_DURATION = 3600000; // 1 hour
+const CACHE_DURATION = 25000; // 25 seconds - refresh before TURN credentials expire (typically 30s on free tier)
 
 async function fetchMeteredIceServers(): Promise<RTCIceServer[]> {
   const apiKey = process.env.EXPO_PUBLIC_METERED_API_KEY;
@@ -100,6 +100,7 @@ class WebRTCService {
   private audioElement: HTMLAudioElement | null = null;
   private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
   private connectionCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private credentialRefreshInterval: ReturnType<typeof setInterval> | null = null;
   private lastActivityTime: number = Date.now();
   private isCleanedUp: boolean = false;
   private isSpeakerOn: boolean = true;
@@ -175,10 +176,20 @@ class WebRTCService {
         console.log('🧊 ICE connection state:', pc.iceConnectionState);
         this.callbacks.onIceConnectionStateChange?.(pc.iceConnectionState);
         
-        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-          console.log('⚠️ ICE connection issue, attempting restart...');
+        if (pc.iceConnectionState === 'failed') {
+          console.log('⚠️ ICE connection failed, attempting restart...');
           this.handleIceFailure(pc);
+        } else if (pc.iceConnectionState === 'disconnected') {
+          console.log('⚠️ ICE disconnected, will attempt restart after brief delay...');
+          // Give it a moment - disconnected doesn't always mean failed
+          setTimeout(() => {
+            if (this.peerConnection?.iceConnectionState === 'disconnected') {
+              console.log('🔄 Still disconnected, restarting ICE...');
+              this.handleIceFailure(pc);
+            }
+          }, 2000);
         } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          console.log('✅ ICE connection active');
           this.lastActivityTime = Date.now();
           this.startKeepAlive();
         }
@@ -411,20 +422,75 @@ class WebRTCService {
         return;
       }
       
+      const connectionState = this.peerConnection?.connectionState;
+      const iceState = this.peerConnection?.iceConnectionState;
+      
+      // Update activity time if connection is active
+      if (connectionState === 'connected' || iceState === 'connected' || iceState === 'completed') {
+        this.lastActivityTime = Date.now();
+      }
+      
       const timeSinceActivity = Date.now() - this.lastActivityTime;
       
-      if (timeSinceActivity > 60000) {
-        console.log('⚠️ No activity for 60 seconds, connection may be stale');
-        if (this.peerConnection?.iceConnectionState === 'disconnected') {
+      if (timeSinceActivity > 120000) {
+        console.log('⚠️ No activity for 120 seconds, connection may be stale');
+        if (iceState === 'disconnected' || iceState === 'failed') {
           console.log('❌ Connection lost, triggering end');
           this.callbacks.onCallEnded?.();
         }
       }
-      
-      if (this.peerConnection?.connectionState === 'connected') {
-        this.lastActivityTime = Date.now();
+    }, 5000);
+    
+    // Start credential refresh interval to prevent TURN timeout
+    this.startCredentialRefresh();
+  }
+  
+  private startCredentialRefresh() {
+    if (this.credentialRefreshInterval) return;
+    
+    console.log('🔄 Starting TURN credential refresh interval (every 25s)...');
+    this.credentialRefreshInterval = setInterval(async () => {
+      if (this.isCleanedUp || !this.peerConnection) {
+        this.stopCredentialRefresh();
+        return;
       }
-    }, 10000);
+      
+      const connectionState = this.peerConnection?.connectionState;
+      const iceState = this.peerConnection?.iceConnectionState;
+      
+      // Only refresh if connection is active
+      if (connectionState === 'connected' || iceState === 'connected' || iceState === 'completed') {
+        console.log('🔄 Refreshing TURN credentials to prevent timeout...');
+        
+        // Clear cache to force fresh credentials
+        cachedIceServers = null;
+        cacheTimestamp = 0;
+        
+        // Fetch fresh credentials
+        const freshIceServers = await fetchMeteredIceServers();
+        console.log('🔄 Got fresh TURN credentials, count:', freshIceServers.length);
+        
+        // Perform ICE restart to use new credentials
+        if (this.peerConnection && this.peerConnection.restartIce) {
+          try {
+            console.log('🔄 Triggering ICE restart with fresh credentials...');
+            this.peerConnection.restartIce();
+            this.lastActivityTime = Date.now();
+            console.log('✅ ICE restart triggered successfully');
+          } catch (error) {
+            console.error('❌ Error during ICE restart:', error);
+          }
+        }
+      }
+    }, 25000); // Refresh every 25 seconds (before 30s TURN TTL expires)
+  }
+  
+  private stopCredentialRefresh() {
+    if (this.credentialRefreshInterval) {
+      clearInterval(this.credentialRefreshInterval);
+      this.credentialRefreshInterval = null;
+      console.log('🔄 Credential refresh stopped');
+    }
   }
 
   private stopKeepAlive() {
@@ -437,6 +503,7 @@ class WebRTCService {
       clearInterval(this.connectionCheckInterval);
       this.connectionCheckInterval = null;
     }
+    this.stopCredentialRefresh();
   }
 
   private playRemoteAudio(stream: MediaStream) {
