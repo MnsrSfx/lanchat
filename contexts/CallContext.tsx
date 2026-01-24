@@ -282,14 +282,14 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     }
     
     try {
-      const ringbackUrl = 'https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3';
+      const ringbackUrl = 'https://cdn.pixabay.com/download/audio/2022/10/30/audio_37460a5c87.mp3';
       
       if (Platform.OS === 'web') {
         console.log('🔔 Web platform - playing ringback with HTML5 Audio');
         try {
           const audio = new Audio(ringbackUrl);
           audio.loop = true;
-          audio.volume = 0.7;
+          audio.volume = 0.3;
           audio.preload = 'auto';
           ringbackRef.current = audio;
           
@@ -551,7 +551,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       console.log('📞 Cleaning up active call listener');
       unsubscribe();
     };
-  }, [activeCall?.id, activeCall?.status, activeCall?.callerId, stopRingtone, stopRingback, stopAllWebAudio, user?.uid, isWebRTCSupported]);
+  }, [activeCall?.id, activeCall?.status, activeCall?.callerId, stopRingtone, stopRingback, stopAllWebAudio, user?.uid, isWebRTCSupported, saveCallMessageToChat]);
 
   const initiateCall = useCallback(async (
     receiverId: string, 
@@ -628,8 +628,25 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         console.log('📞 Call timeout - marking as missed');
         if (isEndingCallRef.current) return;
         isEndingCallRef.current = true;
+        
+        // Stop ringback sound immediately
+        stopRingback();
+        stopAllWebAudio();
+        
         try {
           await webRTCService.cleanup();
+          
+          // Save missed call message to chat
+          if (user?.uid) {
+            await saveCallMessageToChat(
+              user.uid,
+              receiverId,
+              'missed',
+              0,
+              callId
+            );
+          }
+          
           await updateDoc(callDocRef, {
             status: 'missed',
             endedAt: serverTimestamp(),
@@ -648,7 +665,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       console.error('❌ Error initiating call:', error);
       return null;
     }
-  }, [user, isWebRTCSupported, playRingback]);
+  }, [user, isWebRTCSupported, playRingback, stopRingback, stopAllWebAudio, saveCallMessageToChat]);
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall?.id || !db) {
