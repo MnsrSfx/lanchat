@@ -29,6 +29,9 @@ async function fetchMeteredIceServers(): Promise<RTCIceServer[]> {
   const apiKey = process.env.EXPO_PUBLIC_METERED_API_KEY;
   const appName = process.env.EXPO_PUBLIC_METERED_APP_NAME;
 
+  console.log('🔑 Metered API Key:', apiKey ? `${apiKey.substring(0, 8)}...` : 'NOT SET');
+  console.log('📱 Metered App Name:', appName || 'NOT SET');
+
   if (!apiKey || !appName) {
     console.log('⚠️ Metered credentials not configured, using fallback STUN servers');
     return FALLBACK_ICE_SERVERS;
@@ -40,11 +43,11 @@ async function fetchMeteredIceServers(): Promise<RTCIceServer[]> {
     return cachedIceServers;
   }
 
+  const url = `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`;
+  console.log('🧊 Fetching TURN credentials from:', url.replace(apiKey, 'API_KEY_HIDDEN'));
+
   try {
-    console.log('🧊 Fetching TURN credentials from Metered.ca...');
-    const response = await fetch(
-      `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`
-    );
+    const response = await fetch(url);
 
     if (!response.ok) {
       throw new Error(`Metered API error: ${response.status}`);
