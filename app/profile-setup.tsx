@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,16 +8,21 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  Modal,
+  FlatList,
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, MapPin, Calendar, ChevronRight, Check, Globe, User } from 'lucide-react-native';
+import { Camera, MapPin, Calendar, ChevronRight, Check, Globe, User, Search, X, ChevronDown } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { LANGUAGES, PROFICIENCY_LEVELS } from '@/constants/languages';
+import { COUNTRIES, Country } from '@/constants/countries';
 import { Language } from '@/types';
 import Colors from '@/constants/colors';
+
+const AGE_OPTIONS = Array.from({ length: 82 }, (_, i) => i + 18);
 
 export default function ProfileSetupScreen() {
   const { user, updateProfile, isUpdateLoading, isAuthenticated, needsProfileSetup } = useAuth();
@@ -25,15 +30,29 @@ export default function ProfileSetupScreen() {
   const [step, setStep] = useState(1);
   const [photos, setPhotos] = useState<string[]>(user?.photos || []);
   const [bio, setBio] = useState(user?.bio || '');
-  const [country, setCountry] = useState(user?.country || '');
+  const [selectedCountry, setSelectedCountry] = useState<Country | null>(
+    user?.country ? COUNTRIES.find(c => c.name === user.country) || null : null
+  );
   const [city, setCity] = useState(user?.city || '');
-  const [age, setAge] = useState(user?.age?.toString() || '');
+  const [selectedAge, setSelectedAge] = useState<number | null>(user?.age || null);
   const [nativeLanguage, setNativeLanguage] = useState<Language | null>(user?.nativeLanguage || null);
   const [learningLanguages, setLearningLanguages] = useState<Language[]>(user?.learningLanguages || []);
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [showLearningPicker, setShowLearningPicker] = useState(false);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [showAgePicker, setShowAgePicker] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
   const [name, setName] = useState(user?.name || '');
   const [errors, setErrors] = useState<{ name?: string; age?: string; country?: string }>({});
+
+  const filteredCountries = useMemo(() => {
+    if (!countrySearch.trim()) return COUNTRIES;
+    const search = countrySearch.toLowerCase();
+    return COUNTRIES.filter(c => 
+      c.name.toLowerCase().includes(search) || 
+      c.code.toLowerCase().includes(search)
+    );
+  }, [countrySearch]);
 
   const pickImage = async () => {
     if (photos.length >= 4) {
@@ -93,9 +112,9 @@ export default function ProfileSetupScreen() {
         avatar: photos[0] || '',
         photos,
         bio,
-        country: country.trim(),
+        country: selectedCountry?.name || '',
         city: city.trim(),
-        age: parseInt(age) || 0,
+        age: selectedAge || 0,
         nativeLanguage: nativeLanguage || user?.nativeLanguage,
         learningLanguages,
       });
@@ -123,18 +142,12 @@ export default function ProfileSetupScreen() {
       isValid = false;
     }
 
-    if (!age.trim()) {
+    if (!selectedAge) {
       newErrors.age = 'Age is required';
       isValid = false;
-    } else {
-      const ageNum = parseInt(age);
-      if (isNaN(ageNum) || ageNum < 13 || ageNum > 99) {
-        newErrors.age = 'Please enter a valid age (13-99)';
-        isValid = false;
-      }
     }
 
-    if (!country.trim()) {
+    if (!selectedCountry) {
       newErrors.country = 'Country is required';
       isValid = false;
     }
@@ -144,11 +157,129 @@ export default function ProfileSetupScreen() {
   };
 
   const canProceed = () => {
-    if (step === 1) return name.trim().length >= 2 && age.trim() && parseInt(age) >= 13 && country.trim();
+    if (step === 1) return name.trim().length >= 2 && selectedAge && selectedCountry;
     if (step === 2) return nativeLanguage;
     if (step === 3) return learningLanguages.length > 0;
     return true;
   };
+
+  const renderCountryPicker = () => (
+    <Modal
+      visible={showCountryPicker}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => setShowCountryPicker(false)}
+    >
+      <SafeAreaView style={styles.modalContainer}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>Select Country</Text>
+          <TouchableOpacity 
+            style={styles.modalCloseButton}
+            onPress={() => setShowCountryPicker(false)}
+          >
+            <X size={24} color={Colors.light.text} />
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.searchContainer}>
+          <Search size={20} color={Colors.light.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search country..."
+            placeholderTextColor={Colors.light.textSecondary}
+            value={countrySearch}
+            onChangeText={setCountrySearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {countrySearch.length > 0 && (
+            <TouchableOpacity onPress={() => setCountrySearch('')}>
+              <X size={18} color={Colors.light.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <FlatList
+          data={filteredCountries}
+          keyExtractor={(item) => item.code}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.countryList}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[
+                styles.countryItem,
+                selectedCountry?.code === item.code && styles.countryItemSelected,
+              ]}
+              onPress={() => {
+                setSelectedCountry(item);
+                setShowCountryPicker(false);
+                setCountrySearch('');
+              }}
+            >
+              <Text style={styles.countryFlag}>{item.flag}</Text>
+              <Text style={styles.countryName}>{item.name}</Text>
+              {selectedCountry?.code === item.code && (
+                <Check size={20} color={Colors.light.tint} />
+              )}
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No countries found</Text>
+            </View>
+          }
+        />
+      </SafeAreaView>
+    </Modal>
+  );
+
+  const renderAgePicker = () => (
+    <Modal
+      visible={showAgePicker}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => setShowAgePicker(false)}
+    >
+      <SafeAreaView style={styles.modalContainer}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>Select Age</Text>
+          <TouchableOpacity 
+            style={styles.modalCloseButton}
+            onPress={() => setShowAgePicker(false)}
+          >
+            <X size={24} color={Colors.light.text} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.ageGridContainer}>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={styles.ageGrid}>
+              {AGE_OPTIONS.map((age) => (
+                <TouchableOpacity
+                  key={age}
+                  style={[
+                    styles.ageItem,
+                    selectedAge === age && styles.ageItemSelected,
+                  ]}
+                  onPress={() => {
+                    setSelectedAge(age);
+                    setShowAgePicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.ageItemText,
+                    selectedAge === age && styles.ageItemTextSelected,
+                  ]}>
+                    {age}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
 
   const renderStep1 = () => (
     <View style={styles.stepContent}>
@@ -210,16 +341,23 @@ export default function ProfileSetupScreen() {
       <View style={styles.row}>
         <View style={[styles.inputGroup, { flex: 1 }]}>
           <Text style={styles.label}>Country <Text style={styles.required}>*</Text></Text>
-          <View style={[styles.inputWithIcon, errors.country && styles.inputError]}>
-            <MapPin size={18} color={Colors.light.textSecondary} />
-            <TextInput
-              style={styles.inputInner}
-              placeholder="Country"
-              placeholderTextColor={Colors.light.textSecondary}
-              value={country}
-              onChangeText={setCountry}
-            />
-          </View>
+          <TouchableOpacity
+            style={[styles.pickerButton, errors.country && styles.inputError]}
+            onPress={() => setShowCountryPicker(true)}
+          >
+            {selectedCountry ? (
+              <>
+                <Text style={styles.pickerFlag}>{selectedCountry.flag}</Text>
+                <Text style={styles.pickerText} numberOfLines={1}>{selectedCountry.name}</Text>
+              </>
+            ) : (
+              <>
+                <MapPin size={18} color={Colors.light.textSecondary} />
+                <Text style={styles.pickerPlaceholder}>Select</Text>
+              </>
+            )}
+            <ChevronDown size={18} color={Colors.light.textSecondary} />
+          </TouchableOpacity>
           {errors.country && <Text style={styles.errorText}>{errors.country}</Text>}
         </View>
         <View style={{ width: 12 }} />
@@ -237,20 +375,23 @@ export default function ProfileSetupScreen() {
 
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Age <Text style={styles.required}>*</Text></Text>
-        <View style={[styles.inputWithIcon, errors.age && styles.inputError]}>
+        <TouchableOpacity
+          style={[styles.pickerButton, errors.age && styles.inputError]}
+          onPress={() => setShowAgePicker(true)}
+        >
           <Calendar size={18} color={Colors.light.textSecondary} />
-          <TextInput
-            style={styles.inputInner}
-            placeholder="Your age"
-            placeholderTextColor={Colors.light.textSecondary}
-            value={age}
-            onChangeText={setAge}
-            keyboardType="number-pad"
-            maxLength={2}
-          />
-        </View>
+          {selectedAge ? (
+            <Text style={styles.pickerText}>{selectedAge} years old</Text>
+          ) : (
+            <Text style={styles.pickerPlaceholder}>Select your age</Text>
+          )}
+          <ChevronDown size={18} color={Colors.light.textSecondary} />
+        </TouchableOpacity>
         {errors.age && <Text style={styles.errorText}>{errors.age}</Text>}
       </View>
+
+      {renderCountryPicker()}
+      {renderAgePicker()}
     </View>
   );
 
@@ -568,6 +709,140 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
+  },
+  pickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.light.surface,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 48,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    gap: 8,
+  },
+  pickerFlag: {
+    fontSize: 20,
+  },
+  pickerText: {
+    flex: 1,
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  pickerPlaceholder: {
+    flex: 1,
+    fontSize: 16,
+    color: Colors.light.textSecondary,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.light.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: Colors.light.text,
+  },
+  modalCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.light.surfaceSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.light.surfaceSecondary,
+    marginHorizontal: 20,
+    marginVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    height: 48,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  countryList: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  countryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.light.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  countryItemSelected: {
+    borderColor: Colors.light.tint,
+    backgroundColor: Colors.light.tintLight,
+  },
+  countryFlag: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  countryName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500' as const,
+    color: Colors.light.text,
+  },
+  emptyState: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: Colors.light.textSecondary,
+  },
+  ageGridContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  ageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingVertical: 16,
+  },
+  ageItem: {
+    width: '18%',
+    aspectRatio: 1.2,
+    backgroundColor: Colors.light.surface,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  ageItemSelected: {
+    backgroundColor: Colors.light.tint,
+    borderColor: Colors.light.tint,
+  },
+  ageItemText: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+  },
+  ageItemTextSelected: {
+    color: '#fff',
   },
   selectedLanguage: {
     flexDirection: 'row',
