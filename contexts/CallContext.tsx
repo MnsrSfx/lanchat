@@ -289,7 +289,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         try {
           const audio = new Audio(ringbackUrl);
           audio.loop = true;
-          audio.volume = 0.3;
+          audio.volume = 0.5;
           audio.preload = 'auto';
           ringbackRef.current = audio;
           
