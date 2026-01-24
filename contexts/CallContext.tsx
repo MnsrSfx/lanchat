@@ -154,29 +154,34 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     if (Platform.OS === 'web') {
       try {
         const allAudio = document.querySelectorAll('audio');
-        console.log('🔕 Found', allAudio.length, 'audio elements to stop');
+        console.log('🔕 Found', allAudio.length, 'audio elements to check');
         
         allAudio.forEach((audio, index) => {
           try {
-            audio.pause();
-            audio.currentTime = 0;
-            audio.muted = true;
-            audio.volume = 0;
+            // IMPORTANT: Skip WebRTC audio elements (they use srcObject, not src)
+            if (audio.srcObject) {
+              console.log('🔕 Skipping WebRTC audio element', index, '(has srcObject)');
+              return;
+            }
             
-            // Only clear src for ringtone audio (not WebRTC audio)
+            // Only stop ringtone/ringback audio (pixabay URLs)
             if (audio.src && audio.src.includes('pixabay')) {
+              audio.pause();
+              audio.currentTime = 0;
+              audio.muted = true;
+              audio.volume = 0;
               audio.src = '';
               audio.load();
-              console.log('🔕 Cleared ringtone audio element', index);
+              console.log('🔕 Stopped ringtone audio element', index);
             } else {
-              console.log('🔕 Paused audio element', index, '(keeping for WebRTC)');
+              console.log('🔕 Skipping unknown audio element', index);
             }
           } catch (audioError) {
             console.warn('⚠️ Error stopping audio element', index, audioError);
           }
         });
         
-        console.log('🔕 Stopped all web audio elements');
+        console.log('🔕 Finished checking web audio elements');
       } catch (e) {
         console.warn('⚠️ Could not stop all audio elements:', e);
       }

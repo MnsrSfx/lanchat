@@ -484,6 +484,9 @@ class WebRTCService {
     console.log('🎤 localStream exists:', !!this.localStream);
     console.log('🎤 peerConnection exists:', !!this.peerConnection);
     
+    let tracksToggled = 0;
+    
+    // First try local stream
     if (this.localStream) {
       const audioTracks = this.localStream.getAudioTracks();
       console.log('🎤 Found', audioTracks.length, 'audio tracks in localStream');
@@ -491,24 +494,29 @@ class WebRTCService {
       audioTracks.forEach((track, index) => {
         const wasEnabled = track.enabled;
         track.enabled = !muted;
-        console.log(`🎤 Track ${index} (${track.label}): was ${wasEnabled}, now ${track.enabled}`);
+        tracksToggled++;
+        console.log(`🎤 LocalStream track ${index} (${track.label}): was ${wasEnabled}, now ${track.enabled}`);
       });
-      console.log('🎤 Microphone', muted ? 'muted' : 'unmuted');
+    }
+    
+    // Also try peer connection senders (more reliable)
+    if (this.peerConnection) {
+      const senders = this.peerConnection.getSenders();
+      console.log('🎤 Checking peer connection senders:', senders.length);
+      senders.forEach((sender, index) => {
+        if (sender.track && sender.track.kind === 'audio') {
+          const wasEnabled = sender.track.enabled;
+          sender.track.enabled = !muted;
+          tracksToggled++;
+          console.log(`🎤 Sender track ${index}: was ${wasEnabled}, now ${sender.track.enabled}`);
+        }
+      });
+    }
+    
+    if (tracksToggled > 0) {
+      console.log('🎤 Microphone', muted ? 'muted' : 'unmuted', `(${tracksToggled} tracks)`);
     } else {
-      console.warn('⚠️ No local stream available for mute toggle');
-      
-      // Try to get tracks from peer connection senders
-      if (this.peerConnection) {
-        const senders = this.peerConnection.getSenders();
-        console.log('🎤 Trying peer connection senders:', senders.length);
-        senders.forEach((sender, index) => {
-          if (sender.track && sender.track.kind === 'audio') {
-            const wasEnabled = sender.track.enabled;
-            sender.track.enabled = !muted;
-            console.log(`🎤 Sender track ${index}: was ${wasEnabled}, now ${sender.track.enabled}`);
-          }
-        });
-      }
+      console.warn('⚠️ No audio tracks found to toggle mute');
     }
   }
 
@@ -519,39 +527,43 @@ class WebRTCService {
     console.log('🔊 Platform:', Platform.OS);
     
     if (Platform.OS === 'web') {
-      // Try to find audio element if not stored
-      if (!this.audioElement) {
-        const audioElements = document.querySelectorAll('audio');
-        console.log('🔊 Found', audioElements.length, 'audio elements in DOM');
-        
-        // Find the WebRTC audio element (not ringtone)
-        audioElements.forEach((audio, index) => {
-          if (audio.srcObject) {
-            this.audioElement = audio;
-            console.log('🔊 Found WebRTC audio element at index', index);
-          }
-        });
-      }
+      // Always search for WebRTC audio element
+      const audioElements = document.querySelectorAll('audio');
+      console.log('🔊 Found', audioElements.length, 'audio elements in DOM');
       
-      if (this.audioElement) {
-        try {
-          const oldVolume = this.audioElement.volume;
-          if (speakerOn) {
-            this.audioElement.volume = 1.0;
-            this.audioElement.muted = false;
-            console.log('🔊 Speaker ON - volume:', oldVolume, '->', 1.0);
-          } else {
-            this.audioElement.volume = 0.3;
-            console.log('🔊 Speaker OFF - volume:', oldVolume, '->', 0.3);
+      let foundWebRTCAudio = false;
+      audioElements.forEach((audio, index) => {
+        // WebRTC audio has srcObject, ringtone has src URL
+        if (audio.srcObject) {
+          this.audioElement = audio;
+          foundWebRTCAudio = true;
+          console.log('🔊 Found WebRTC audio element at index', index);
+          
+          try {
+            const oldVolume = audio.volume;
+            const wasMuted = audio.muted;
+            
+            if (speakerOn) {
+              audio.volume = 1.0;
+              audio.muted = false;
+              console.log('🔊 Speaker ON - volume:', oldVolume, '->', 1.0, 'muted:', wasMuted, '->', false);
+            } else {
+              // Earpiece mode - lower volume
+              audio.volume = 0.3;
+              audio.muted = false;
+              console.log('🔊 Speaker OFF (earpiece) - volume:', oldVolume, '->', 0.3);
+            }
+          } catch (error) {
+            console.error('❌ Error toggling speaker on element', index, ':', error);
           }
-        } catch (error) {
-          console.error('❌ Error toggling speaker:', error);
         }
-      } else {
-        console.warn('⚠️ No audio element found for speaker toggle');
+      });
+      
+      if (!foundWebRTCAudio) {
+        console.warn('⚠️ No WebRTC audio element found for speaker toggle');
       }
     } else {
-      console.log('🔊 Speaker toggle - not on web platform');
+      console.log('🔊 Speaker toggle - not on web platform (native handles audio routing)');
     }
   }
 
