@@ -29,7 +29,7 @@ export default function CallScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const params = useGlobalSearchParams<{ mode?: string }>();
   const isAccepting = params.mode === 'accept';
-  const { activeCall, initiateCall, endCall, isMuted, toggleMute, isSpeaker, toggleSpeaker, connectionState, iceConnectionState, isWebRTCSupported } = useCall();
+  const { activeCall, initiateCall, endCall, isMuted, toggleMute, isSpeaker, toggleSpeaker, connectionState, iceConnectionState, isWebRTCSupported, remoteMuted } = useCall();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [duration, setDuration] = useState(0);
@@ -285,6 +285,13 @@ export default function CallScreen() {
           <Text style={styles.callStatus}>
             {getCallStatusText()}
           </Text>
+          
+          {activeCall?.status === 'accepted' && remoteMuted && (
+            <View style={styles.remoteMutedBadge}>
+              <MicOff size={14} color="#fff" />
+              <Text style={styles.remoteMutedText}>Mikrofonu kapalı</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.controls}>
@@ -476,6 +483,21 @@ const styles = StyleSheet.create({
   },
   connectionText: {
     color: Colors.light.text,
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  remoteMutedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: 12,
+  },
+  remoteMutedText: {
+    color: '#fff',
     fontSize: 13,
     fontWeight: '500' as const,
   },

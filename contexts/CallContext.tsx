@@ -24,6 +24,7 @@ interface CallContextValue {
   isInCall: boolean;
   isMuted: boolean;
   isSpeaker: boolean;
+  remoteMuted: boolean;
   connectionState: string | null;
   iceConnectionState: string | null;
   isWebRTCSupported: boolean;
@@ -41,6 +42,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const [activeCall, setActiveCall] = useState<Call | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(true);
+  const [remoteMuted, setRemoteMuted] = useState(false);
   const [connectionState, setConnectionState] = useState<string | null>(null);
   const [iceConnectionState, setIceConnectionState] = useState<string | null>(null);
   const ringtoneRef = useRef<AudioPlayer | HTMLAudioElement | null>(null);
@@ -416,7 +418,13 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         answeredAt: data.answeredAt instanceof Timestamp ? data.answeredAt.toDate() : undefined,
         endedAt: data.endedAt instanceof Timestamp ? data.endedAt.toDate() : undefined,
         endedBy: data.endedBy,
+        callerMuted: data.callerMuted || false,
+        receiverMuted: data.receiverMuted || false,
       };
+
+      const isCaller = user?.uid === updatedCall.callerId;
+      const newRemoteMuted = isCaller ? updatedCall.receiverMuted : updatedCall.callerMuted;
+      setRemoteMuted(newRemoteMuted || false);
 
       console.log('📞 Active call snapshot received:', updatedCall.status);
       
@@ -429,8 +437,9 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
           stopRingback();
           setIsMuted(false);
         setIsSpeaker(true);
-          setConnectionState(null);
-          setIceConnectionState(null);
+        setRemoteMuted(false);
+        setConnectionState(null);
+        setIceConnectionState(null);
         }
       } else if (updatedCall.status === 'accepted') {
         // Call was accepted - stop all ringing sounds for both sides
@@ -664,7 +673,8 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     setActiveCall(null);
     setIncomingCall(null);
     setIsMuted(false);
-        setIsSpeaker(true);
+    setIsSpeaker(true);
+    setRemoteMuted(false);
     setConnectionState(null);
     setIceConnectionState(null);
     
@@ -693,12 +703,27 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     }
   }, [activeCall, incomingCall, user?.uid, stopRingtone, stopRingback, stopAllWebAudio]);
 
-  const toggleMute = useCallback(() => {
+  const toggleMute = useCallback(async () => {
     const newMutedState = !isMuted;
     setIsMuted(newMutedState);
     webRTCService.toggleMute(newMutedState);
     console.log('📞 Mute toggled:', newMutedState);
-  }, [isMuted]);
+
+    if (activeCall?.id && db && user?.uid) {
+      try {
+        const callDocRef = doc(db, 'calls', activeCall.id);
+        const isCaller = activeCall.callerId === user.uid;
+        const muteField = isCaller ? 'callerMuted' : 'receiverMuted';
+        
+        await updateDoc(callDocRef, {
+          [muteField]: newMutedState,
+        });
+        console.log('📞 Mute status synced to Firebase:', muteField, '=', newMutedState);
+      } catch (error) {
+        console.error('❌ Error syncing mute status:', error);
+      }
+    }
+  }, [isMuted, activeCall?.id, activeCall?.callerId, user?.uid]);
 
   const toggleSpeaker = useCallback(() => {
     const newSpeakerState = !isSpeaker;
@@ -713,6 +738,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     isInCall: !!activeCall && activeCall.status === 'accepted',
     isMuted,
     isSpeaker,
+    remoteMuted,
     connectionState,
     iceConnectionState,
     isWebRTCSupported,

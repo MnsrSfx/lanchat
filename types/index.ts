@@ -65,6 +65,8 @@ export interface Call {
   answeredAt?: Date;
   endedAt?: Date;
   endedBy?: string;
+  callerMuted?: boolean;
+  receiverMuted?: boolean;
 }
 
 export interface AuthState {
