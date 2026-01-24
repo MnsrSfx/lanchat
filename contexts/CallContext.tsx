@@ -282,25 +282,36 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     }
     
     try {
-      const ringbackUrl = 'https://cdn.pixabay.com/download/audio/2022/10/30/audio_37460a5c87.mp3';
+      // Standard phone ringback/dialing tone
+      const ringbackUrl = 'https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3';
       
       if (Platform.OS === 'web') {
         console.log('🔔 Web platform - playing ringback with HTML5 Audio');
         try {
           const audio = new Audio(ringbackUrl);
           audio.loop = true;
-          audio.volume = 0.5;
+          audio.volume = 0.7;
           audio.preload = 'auto';
           ringbackRef.current = audio;
+          isRingbackPlayingRef.current = true;
           
+          console.log('🔔 Attempting to play ringback tone...');
           const playPromise = audio.play();
           if (playPromise !== undefined) {
             playPromise.then(() => {
-              isRingbackPlayingRef.current = true;
-              console.log('🔔 Web ringback playing');
+              console.log('🔔 Web ringback playing successfully');
             }).catch((error) => {
               console.warn('⚠️ Web ringback autoplay blocked:', error.message);
               isRingbackPlayingRef.current = false;
+              // Try playing with user interaction workaround
+              audio.muted = true;
+              audio.play().then(() => {
+                audio.muted = false;
+                isRingbackPlayingRef.current = true;
+                console.log('🔔 Ringback playing after mute workaround');
+              }).catch(() => {
+                console.warn('⚠️ Ringback still blocked after workaround');
+              });
             });
           }
         } catch (webError) {
@@ -779,14 +790,37 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     isEndingCallRef.current = true;
 
     try {
-      console.log('📞 Ending call:', callToEnd.id);
+      console.log('📞 Ending call:', callToEnd.id, 'status was:', callToEnd.status);
       
       const callDocRef = doc(db, 'calls', callToEnd.id);
-      await updateDoc(callDocRef, {
-        status: 'ended',
-        endedAt: serverTimestamp(),
-        endedBy: user?.uid,
-      });
+      
+      // If call was still ringing (not answered), mark as missed and save missed call message
+      const wasRinging = callToEnd.status === 'ringing';
+      const isCaller = callToEnd.callerId === user?.uid;
+      
+      if (wasRinging && isCaller) {
+        // Caller ended the call before it was answered - save missed call message
+        console.log('📞 Caller ended call before answer - saving missed call message');
+        await saveCallMessageToChat(
+          callToEnd.callerId,
+          callToEnd.receiverId,
+          'missed',
+          0,
+          callToEnd.id
+        );
+        
+        await updateDoc(callDocRef, {
+          status: 'missed',
+          endedAt: serverTimestamp(),
+          endedBy: user?.uid,
+        });
+      } else {
+        await updateDoc(callDocRef, {
+          status: 'ended',
+          endedAt: serverTimestamp(),
+          endedBy: user?.uid,
+        });
+      }
       
       console.log('📞 Call ended successfully');
     } catch (error) {
@@ -794,7 +828,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     } finally {
       isEndingCallRef.current = false;
     }
-  }, [activeCall, incomingCall, user?.uid, stopRingtone, stopRingback, stopAllWebAudio]);
+  }, [activeCall, incomingCall, user?.uid, stopRingtone, stopRingback, stopAllWebAudio, saveCallMessageToChat]);
 
   const toggleMute = useCallback(async () => {
     const newMutedState = !isMuted;
