@@ -421,7 +421,7 @@ export default function ProfileScreen() {
             By using LanChat, you agree to these terms. LanChat is a language learning platform that connects people worldwide to practice languages through conversations.
           </Text>
           <Text style={styles.termsText}>
-            • You must be at least 13 years old to use this app{"\n"}
+            • You must be at least 18 years old to use this app{"\n"}
             • You are responsible for your account security{"\n"}
             • You agree to treat other users with respect{"\n"}
             • Harassment, hate speech, and inappropriate content are prohibited{"\n"}
