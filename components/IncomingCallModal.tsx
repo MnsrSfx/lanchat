@@ -7,6 +7,7 @@ import {
   Modal,
   Animated,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Phone, PhoneOff } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -28,11 +29,14 @@ export default function IncomingCallModal({ call, onAccept, onDecline }: Incomin
 
   useEffect(() => {
     if (call) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      // Only trigger haptics on native platforms
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
       
       Animated.spring(slideAnim, {
         toValue: 0,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
         tension: 50,
         friction: 8,
       }).start();
@@ -42,12 +46,12 @@ export default function IncomingCallModal({ call, onAccept, onDecline }: Incomin
           Animated.timing(pulseAnim, {
             toValue: 1.15,
             duration: 800,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== 'web',
           }),
           Animated.timing(pulseAnim, {
             toValue: 1,
             duration: 800,
-            useNativeDriver: true,
+            useNativeDriver: Platform.OS !== 'web',
           }),
         ])
       ).start();
@@ -59,12 +63,16 @@ export default function IncomingCallModal({ call, onAccept, onDecline }: Incomin
   }, [call, pulseAnim, slideAnim]);
 
   const handleAccept = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
     onAccept();
   };
 
   const handleDecline = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
     onDecline();
   };
 
