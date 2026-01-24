@@ -45,6 +45,9 @@ import {
   CheckCheck,
   Reply,
   CornerDownRight,
+  PhoneCall,
+  PhoneMissed,
+  PhoneOff,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
 import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot, updateDoc } from 'firebase/firestore';
@@ -174,6 +177,8 @@ export default function ChatScreen() {
             replyToContent: data.replyToContent,
             replyToSenderId: data.replyToSenderId,
             replyToType: data.replyToType,
+            callStatus: data.callStatus,
+            callDuration: data.callDuration,
           };
         });
         setMessages(fetchedMessages);
@@ -782,6 +787,23 @@ export default function ChatScreen() {
             }}>
               <Image source={{ uri: item.imageUrl }} style={styles.messageImage} />
             </TouchableOpacity>
+          ) : item.type === 'call' ? (
+            <View style={styles.callMessageContent}>
+              {item.callStatus === 'completed' ? (
+                <PhoneCall size={18} color={isOwn ? '#fff' : Colors.light.success} />
+              ) : item.callStatus === 'missed' ? (
+                <PhoneMissed size={18} color={Colors.light.error} />
+              ) : (
+                <PhoneOff size={18} color={Colors.light.warning} />
+              )}
+              <Text style={[
+                styles.callMessageText,
+                isOwn && styles.callMessageTextOwn,
+                item.callStatus === 'missed' && styles.callMessageTextMissed,
+              ]}>
+                {item.content}
+              </Text>
+            </View>
           ) : (
             <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
               {item.content}
@@ -1427,5 +1449,22 @@ const styles = StyleSheet.create({
   },
   replyPreviewClose: {
     padding: 4,
+  },
+  callMessageContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  callMessageText: {
+    fontSize: 14,
+    color: Colors.light.text,
+    fontWeight: '500' as const,
+  },
+  callMessageTextOwn: {
+    color: '#fff',
+  },
+  callMessageTextMissed: {
+    color: Colors.light.error,
   },
 });

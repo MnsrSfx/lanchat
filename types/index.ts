@@ -30,7 +30,7 @@ export interface Message {
   chatId: string;
   senderId: string;
   content: string;
-  type: 'text' | 'voice' | 'image';
+  type: 'text' | 'voice' | 'image' | 'call';
   voiceDuration?: number;
   voiceUrl?: string;
   imageUrl?: string;
@@ -40,6 +40,8 @@ export interface Message {
   replyToContent?: string;
   replyToSenderId?: string;
   replyToType?: 'text' | 'voice' | 'image';
+  callStatus?: 'completed' | 'missed' | 'declined';
+  callDuration?: number;
 }
 
 export interface Chat {

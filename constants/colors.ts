@@ -13,6 +13,8 @@ export default {
     errorLight: "#FEE2E2",
     warning: "#F59E0B",
     warningLight: "#FEF3C7",
+    success: "#22C55E",
+    successLight: "#DCFCE7",
     border: "#E5E7EB",
     borderLight: "#F3F4F6",
     online: "#22C55E",

@@ -9,6 +9,7 @@ import {
   doc, 
   setDoc, 
   updateDoc, 
+  addDoc,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
@@ -52,6 +53,62 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isWebRTCSupported = webRTCService.isSupported();
   const isEndingCallRef = useRef(false);
+  const callMessageSavedRef = useRef<Set<string>>(new Set());
+
+  const saveCallMessageToChat = useCallback(async (
+    callerId: string,
+    receiverId: string,
+    callStatus: 'completed' | 'missed' | 'declined',
+    callDuration: number,
+    callId: string
+  ) => {
+    if (!db) return;
+    
+    if (callMessageSavedRef.current.has(callId)) {
+      console.log('📞 Call message already saved for:', callId);
+      return;
+    }
+    callMessageSavedRef.current.add(callId);
+
+    try {
+      const chatId = [callerId, receiverId].sort().join('_');
+      console.log('📞 Saving call message to chat:', chatId, 'status:', callStatus, 'duration:', callDuration);
+
+      const chatDocRef = doc(db, 'chats', chatId);
+      await setDoc(chatDocRef, {
+        participants: [callerId, receiverId],
+        lastMessageAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      const messagesRef = collection(db, 'chats', chatId, 'messages');
+      let content = '';
+      if (callStatus === 'completed') {
+        const mins = Math.floor(callDuration / 60);
+        const secs = callDuration % 60;
+        content = `Voice call (${mins}:${secs.toString().padStart(2, '0')})`;
+      } else if (callStatus === 'missed') {
+        content = 'Missed voice call';
+      } else if (callStatus === 'declined') {
+        content = 'Call declined';
+      }
+
+      await addDoc(messagesRef, {
+        senderId: callerId,
+        content,
+        type: 'call',
+        callStatus,
+        callDuration: callStatus === 'completed' ? callDuration : 0,
+        createdAt: serverTimestamp(),
+        isRead: false,
+      });
+
+      console.log('✅ Call message saved to chat successfully');
+    } catch (error) {
+      console.error('❌ Error saving call message to chat:', error);
+      callMessageSavedRef.current.delete(callId);
+    }
+  }, []);
 
   const activeCallRef = useRef<Call | null>(null);
   
@@ -431,15 +488,34 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       if (updatedCall.status === 'declined' || updatedCall.status === 'ended' || updatedCall.status === 'missed') {
         console.log('📞 Call ended with status:', updatedCall.status);
         if (!isEndingCallRef.current) {
+          let callStatus: 'completed' | 'missed' | 'declined' = 'completed';
+          if (updatedCall.status === 'missed') callStatus = 'missed';
+          else if (updatedCall.status === 'declined') callStatus = 'declined';
+
+          let callDuration = 0;
+          if (updatedCall.answeredAt && updatedCall.endedAt) {
+            callDuration = Math.floor((updatedCall.endedAt.getTime() - updatedCall.answeredAt.getTime()) / 1000);
+          } else if (updatedCall.answeredAt) {
+            callDuration = Math.floor((Date.now() - updatedCall.answeredAt.getTime()) / 1000);
+          }
+
+          saveCallMessageToChat(
+            updatedCall.callerId,
+            updatedCall.receiverId,
+            callStatus,
+            callDuration,
+            updatedCall.id
+          );
+
           webRTCService.cleanup();
           setActiveCall(null);
           stopRingtone();
           stopRingback();
           setIsMuted(false);
-        setIsSpeaker(true);
-        setRemoteMuted(false);
-        setConnectionState(null);
-        setIceConnectionState(null);
+          setIsSpeaker(true);
+          setRemoteMuted(false);
+          setConnectionState(null);
+          setIceConnectionState(null);
         }
       } else if (updatedCall.status === 'accepted') {
         // Call was accepted - stop all ringing sounds for both sides
