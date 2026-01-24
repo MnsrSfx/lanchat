@@ -9,13 +9,68 @@ import {
   getDoc,
 } from 'firebase/firestore';
 
-const ICE_SERVERS = [
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
 ];
+
+interface MeteredIceServer {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+let cachedIceServers: RTCIceServer[] | null = null;
+let cacheTimestamp: number = 0;
+const CACHE_DURATION = 3600000; // 1 hour
+
+async function fetchMeteredIceServers(): Promise<RTCIceServer[]> {
+  const apiKey = process.env.EXPO_PUBLIC_METERED_API_KEY;
+  const appName = process.env.EXPO_PUBLIC_METERED_APP_NAME;
+
+  if (!apiKey || !appName) {
+    console.log('⚠️ Metered credentials not configured, using fallback STUN servers');
+    return FALLBACK_ICE_SERVERS;
+  }
+
+  // Return cached servers if still valid
+  if (cachedIceServers && Date.now() - cacheTimestamp < CACHE_DURATION) {
+    console.log('🧊 Using cached ICE servers');
+    return cachedIceServers;
+  }
+
+  try {
+    console.log('🧊 Fetching TURN credentials from Metered.ca...');
+    const response = await fetch(
+      `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Metered API error: ${response.status}`);
+    }
+
+    const iceServers: MeteredIceServer[] = await response.json();
+    console.log('✅ Fetched', iceServers.length, 'ICE servers from Metered.ca');
+    
+    // Log server types for debugging
+    iceServers.forEach((server, i) => {
+      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+      urls.forEach(url => {
+        const type = url.startsWith('turn:') ? 'TURN' : url.startsWith('turns:') ? 'TURNS' : 'STUN';
+        console.log(`  ${i + 1}. ${type}: ${url.substring(0, 50)}...`);
+      });
+    });
+
+    cachedIceServers = iceServers;
+    cacheTimestamp = Date.now();
+    return iceServers;
+  } catch (error) {
+    console.error('❌ Error fetching Metered ICE servers:', error);
+    console.log('⚠️ Using fallback STUN servers');
+    return FALLBACK_ICE_SERVERS;
+  }
+}
 
 const ICE_CANDIDATE_CALLER = 'callerCandidates';
 const ICE_CANDIDATE_RECEIVER = 'receiverCandidates';
@@ -87,14 +142,20 @@ class WebRTCService {
     }
   }
 
-  private createPeerConnection(): RTCPeerConnection | null {
+  private async createPeerConnectionAsync(): Promise<RTCPeerConnection | null> {
     if (!this.isSupported()) {
       return null;
     }
 
     try {
       console.log('🔗 Creating peer connection...');
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const iceServers = await fetchMeteredIceServers();
+      console.log('🧊 Using', iceServers.length, 'ICE servers');
+      
+      const pc = new RTCPeerConnection({ 
+        iceServers,
+        iceCandidatePoolSize: 10,
+      });
 
       pc.onicecandidate = (event) => {
         if (event.candidate && this.callId && db && !this.isCleanedUp) {
@@ -177,7 +238,7 @@ class WebRTCService {
       return false;
     }
 
-    const pc = this.createPeerConnection();
+    const pc = await this.createPeerConnectionAsync();
     if (!pc) {
       return false;
     }
@@ -226,7 +287,7 @@ class WebRTCService {
       return false;
     }
 
-    const pc = this.createPeerConnection();
+    const pc = await this.createPeerConnectionAsync();
     if (!pc) {
       return false;
     }
