@@ -44,13 +44,12 @@ import {
   Check,
   CheckCheck,
   Reply,
-  CornerDownRight,
   PhoneCall,
   PhoneMissed,
   PhoneOff,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
-import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import Avatar from '@/components/Avatar';
@@ -77,6 +76,8 @@ export default function ChatScreen() {
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [translatingId, setTranslatingId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const recordingAnimation = useRef(new Animated.Value(1)).current;
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -639,14 +640,64 @@ export default function ChatScreen() {
   };
 
   const handleTranslateMessage = async () => {
-    if (selectedMessageId) {
-      const message = messages.find(m => m.id === selectedMessageId);
-      if (message && message.type === 'text') {
-        Alert.alert('Translation', 'Translation feature will be available soon.');
-      }
+    if (!selectedMessageId) {
+      setShowMessageMenu(false);
+      return;
     }
+    
+    const message = messages.find(m => m.id === selectedMessageId);
+    const messageId = selectedMessageId;
     setShowMessageMenu(false);
     setSelectedMessageId(null);
+    
+    if (!message || message.type !== 'text' || !message.content.trim()) {
+      return;
+    }
+
+    if (translations[messageId]) {
+      setTranslations(prev => {
+        const newTranslations = { ...prev };
+        delete newTranslations[messageId];
+        return newTranslations;
+      });
+      return;
+    }
+
+    const targetLang = currentUser?.nativeLanguage?.code || 'en';
+    
+    setTranslatingId(messageId);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    try {
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(message.content)}`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      });
+
+      if (!response.ok) {
+        throw new Error('Translation failed');
+      }
+
+      const data = await response.json();
+      const translatedText = data[0]
+        ?.filter((item: any) => item && item[0])
+        .map((item: any) => item[0])
+        .join('');
+
+      if (translatedText && translatedText !== message.content) {
+        setTranslations(prev => ({ ...prev, [messageId]: translatedText }));
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        Alert.alert('Translation', 'Text is already in your language or cannot be translated.');
+      }
+    } catch (error) {
+      console.error('Translation error:', error);
+      Alert.alert('Error', 'Failed to translate. Please try again.');
+    } finally {
+      setTranslatingId(null);
+    }
   };
 
   const handleReportMessage = () => {
@@ -730,6 +781,8 @@ export default function ChatScreen() {
     const isOwn = item.senderId === currentUser?.uid;
     const isPlaying = playingMessageId === item.id;
     const isReplyFromMe = item.replyToSenderId === currentUser?.uid;
+    const translation = translations[item.id];
+    const isTranslating = translatingId === item.id;
 
     return (
       <View style={[styles.messageWrapper, isOwn ? styles.messageWrapperOwn : styles.messageWrapperOther]}>
@@ -805,9 +858,28 @@ export default function ChatScreen() {
               </Text>
             </View>
           ) : (
-            <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
-              {item.content}
-            </Text>
+            <>
+              <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>
+                {item.content}
+              </Text>
+              {isTranslating && (
+                <View style={styles.translationLoading}>
+                  <ActivityIndicator size="small" color={isOwn ? 'rgba(255,255,255,0.7)' : Colors.light.tint} />
+                </View>
+              )}
+              {translation && (
+                <View style={[styles.translationContainer, isOwn && styles.translationContainerOwn]}>
+                  <View style={[styles.translationDivider, isOwn && styles.translationDividerOwn]} />
+                  <View style={styles.translationHeader}>
+                    <Languages size={12} color={isOwn ? 'rgba(255,255,255,0.7)' : Colors.light.tint} />
+                    <Text style={[styles.translationLabel, isOwn && styles.translationLabelOwn]}>Translated</Text>
+                  </View>
+                  <Text style={[styles.translationText, isOwn && styles.translationTextOwn]}>
+                    {translation}
+                  </Text>
+                </View>
+              )}
+            </>
           )}
           <View style={styles.messageFooter}>
             <Text style={[styles.messageTime, isOwn && styles.messageTimeOwn]}>
@@ -1335,6 +1407,46 @@ const styles = StyleSheet.create({
   },
   menuOptionTextWarning: {
     color: Colors.light.warning,
+  },
+  translationLoading: {
+    marginTop: 8,
+    alignItems: 'flex-start',
+  },
+  translationContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+  },
+  translationContainerOwn: {},
+  translationDivider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    marginBottom: 6,
+  },
+  translationDividerOwn: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  translationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  translationLabel: {
+    fontSize: 10,
+    color: Colors.light.tint,
+    fontWeight: '500' as const,
+  },
+  translationLabelOwn: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  translationText: {
+    fontSize: 14,
+    color: Colors.light.text,
+    lineHeight: 19,
+    fontStyle: 'italic',
+  },
+  translationTextOwn: {
+    color: 'rgba(255,255,255,0.9)',
   },
   typingContainer: {
     paddingHorizontal: 16,
