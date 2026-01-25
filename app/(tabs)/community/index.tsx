@@ -34,6 +34,7 @@ export default function CommunityScreen() {
   const [showAgeModal, setShowAgeModal] = useState(false);
   const [tempMinAge, setTempMinAge] = useState(18);
   const [tempMaxAge, setTempMaxAge] = useState(99);
+  const [memberFilter, setMemberFilter] = useState<'all' | 'new'>('all');
 
   const ageOptions = useMemo(() => {
     const ages: number[] = [];
@@ -51,6 +52,28 @@ export default function CommunityScreen() {
     setMinAge(18);
     setMaxAge(99);
     setSearchQuery('');
+    setMemberFilter('all');
+  }, []);
+
+  const formatLastSeen = useCallback((lastSeen: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - lastSeen.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return lastSeen.toLocaleDateString();
+  }, []);
+
+  const isNewMember = useCallback((createdAt: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - createdAt.getTime();
+    const diffDays = Math.floor(diffMs / 86400000);
+    return diffDays <= 7;
   }, []);
 
   const activeFiltersCount = useMemo(() => {
@@ -58,8 +81,9 @@ export default function CommunityScreen() {
     if (showOnlineOnly) count++;
     if (selectedLanguage) count++;
     if (isAgeFilterActive) count++;
+    if (memberFilter === 'new') count++;
     return count;
-  }, [showOnlineOnly, selectedLanguage, isAgeFilterActive]);
+  }, [showOnlineOnly, selectedLanguage, isAgeFilterActive, memberFilter]);
 
   useEffect(() => {
     if (!db) {
@@ -139,6 +163,10 @@ export default function CommunityScreen() {
       return u.age >= minAge && u.age <= maxAge;
     });
 
+    if (memberFilter === 'new') {
+      filteredList = filteredList.filter(u => isNewMember(u.createdAt));
+    }
+
     const myLearningCodes = user?.learningLanguages.map(l => l.code) || [];
     
     return filteredList.sort((a, b) => {
@@ -155,7 +183,7 @@ export default function CommunityScreen() {
       
       return 0;
     });
-  }, [users, searchQuery, selectedLanguage, showOnlineOnly, minAge, maxAge, user?.learningLanguages]);
+  }, [users, searchQuery, selectedLanguage, showOnlineOnly, minAge, maxAge, user?.learningLanguages, memberFilter, isNewMember]);
 
   const nativeSpeakers = useMemo(() => {
     const learningLanguages = user?.learningLanguages || [];
@@ -187,7 +215,9 @@ export default function CommunityScreen() {
           name={item.name}
           size={52}
         />
-        <View style={[styles.onlineIndicator, item.isOnline ? styles.online : styles.offline]} />
+        {item.isOnline && (
+          <View style={[styles.onlineIndicator, styles.online]} />
+        )}
       </View>
       
       <View style={styles.userInfo}>
@@ -205,6 +235,9 @@ export default function CommunityScreen() {
           <Text style={styles.locationText}>
             {item.city}, {item.country}
           </Text>
+          {!item.isOnline && item.lastSeen && (
+            <Text style={styles.lastSeenText}> · {formatLastSeen(item.lastSeen)}</Text>
+          )}
         </View>
 
         <View style={styles.languagesRow}>
@@ -247,10 +280,15 @@ export default function CommunityScreen() {
                     name={item.name}
                     size={56}
                   />
-                  <View style={[styles.nativeOnlineIndicator, item.isOnline ? styles.online : styles.offline]} />
+                  {item.isOnline && (
+                    <View style={[styles.nativeOnlineIndicator, styles.online]} />
+                  )}
                 </View>
                 <Text style={styles.nativeName} numberOfLines={1}>{item.name}</Text>
                 <Text style={styles.nativeLanguageText}>{item.nativeLanguage.flag} Native</Text>
+                {!item.isOnline && item.lastSeen && (
+                  <Text style={styles.nativeLastSeen}>{formatLastSeen(item.lastSeen)}</Text>
+                )}
               </TouchableOpacity>
             )}
             keyExtractor={item => item.id}
@@ -261,7 +299,7 @@ export default function CommunityScreen() {
       )}
 
       <View style={styles.filterSection}>
-        <Text style={styles.allUsersTitle}>All Members</Text>
+        <Text style={styles.allUsersTitle}>{memberFilter === 'new' ? 'New Members' : 'All Members'}</Text>
         <Text style={styles.resultsCount}>{filteredUsers.length} members found</Text>
       </View>
     </View>
@@ -325,6 +363,24 @@ export default function CommunityScreen() {
                 Age: {minAge}-{maxAge}
               </Text>
               <ChevronDown size={14} color={isAgeFilterActive ? '#fff' : Colors.light.text} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterChip, memberFilter === 'all' && styles.filterChipActive]}
+              onPress={() => setMemberFilter('all')}
+            >
+              <Text style={[styles.filterChipText, memberFilter === 'all' && styles.filterChipTextActive]}>
+                All Members
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterChip, memberFilter === 'new' && styles.filterChipActive]}
+              onPress={() => setMemberFilter('new')}
+            >
+              <Text style={[styles.filterChipText, memberFilter === 'new' && styles.filterChipTextActive]}>
+                New Members
+              </Text>
             </TouchableOpacity>
 
             {activeFiltersCount > 0 && (
@@ -776,6 +832,11 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     marginTop: 2,
   },
+  nativeLastSeen: {
+    fontSize: 10,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
+  },
   filterSection: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -857,6 +918,10 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  lastSeenText: {
+    fontSize: 12,
     color: Colors.light.textSecondary,
   },
   languagesRow: {
