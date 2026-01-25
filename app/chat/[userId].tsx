@@ -47,6 +47,7 @@ import {
   PhoneCall,
   PhoneMissed,
   PhoneOff,
+  ChevronLeft,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
 import { doc, collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, deleteDoc, setDoc, DocumentSnapshot } from 'firebase/firestore';
@@ -905,7 +906,16 @@ export default function ChatScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerBackVisible: true,
+          headerBackVisible: false,
+          headerLeft: () => (
+            <TouchableOpacity
+              style={styles.headerBackButton}
+              onPress={() => router.back()}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <ChevronLeft size={28} color={Colors.light.text} />
+            </TouchableOpacity>
+          ),
           headerTitle: () => (
             <TouchableOpacity 
               style={styles.headerTitle}
@@ -1132,6 +1142,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
+  headerBackButton: {
+    marginRight: 8,
+    padding: 4,
+  },
   headerName: {
     fontSize: 16,
     fontWeight: '600' as const,

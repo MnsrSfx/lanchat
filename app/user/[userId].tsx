@@ -32,6 +32,7 @@ import {
   Trash2,
   Languages,
   Flag,
+  ChevronLeft,
 } from 'lucide-react-native';
 import { Message, User } from '@/types';
 import { db } from '@/src/firebase';
@@ -444,7 +445,17 @@ export default function ChatScreen() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen
         options={{
-          headerBackVisible: true,
+          headerShown: true,
+          headerBackVisible: false,
+          headerLeft: () => (
+            <TouchableOpacity
+              style={styles.headerBackButton}
+              onPress={() => router.back()}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <ChevronLeft size={28} color={Colors.light.text} />
+            </TouchableOpacity>
+          ),
           headerTitle: () => (
             <TouchableOpacity 
               style={styles.headerTitle}
@@ -621,6 +632,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  headerBackButton: {
+    marginRight: 8,
+    padding: 4,
   },
   headerAvatar: {
     width: 36,

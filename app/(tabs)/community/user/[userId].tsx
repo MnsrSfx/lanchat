@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
-import { MapPin, MessageCircle, Phone, Video, Shield, Clock } from 'lucide-react-native';
+import { MapPin, MessageCircle, Phone, Video, Shield, Clock, ChevronLeft } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import Avatar from '@/components/Avatar';
 import PhotoGalleryModal from '@/components/PhotoGalleryModal';
@@ -106,7 +106,21 @@ export default function UserProfileScreen() {
   return (
     <>
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <Stack.Screen options={{ title: '' }} />
+      <Stack.Screen 
+        options={{ 
+          title: '',
+          headerBackVisible: false,
+          headerLeft: () => (
+            <TouchableOpacity
+              style={styles.headerBackButton}
+              onPress={() => router.back()}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <ChevronLeft size={28} color={Colors.light.text} />
+            </TouchableOpacity>
+          ),
+        }} 
+      />
       
       <View style={styles.header}>
         <TouchableOpacity 
@@ -251,6 +265,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
+  },
+  headerBackButton: {
+    marginRight: 8,
+    padding: 4,
   },
   centerContent: {
     justifyContent: 'center',
