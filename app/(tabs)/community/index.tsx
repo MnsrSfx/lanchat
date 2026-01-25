@@ -41,6 +41,11 @@ export default function CommunityScreen() {
       const fetchedUsers: User[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
+        const lastSeenDate = data.lastSeen ? (data.lastSeen as Timestamp).toDate() : new Date(0);
+        const now = new Date();
+        const timeDiffMs = now.getTime() - lastSeenDate.getTime();
+        const isActuallyOnline = data.isOnline && timeDiffMs < 120000;
+        
         const userData: User = {
           id: doc.id,
           uid: data.uid,
@@ -51,8 +56,8 @@ export default function CommunityScreen() {
           bio: data.bio || '',
           nativeLanguage: data.nativeLanguage || { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
           learningLanguages: data.learningLanguages || [],
-          isOnline: data.isOnline || false,
-          lastSeen: data.lastSeen ? (data.lastSeen as Timestamp).toDate() : new Date(),
+          isOnline: isActuallyOnline,
+          lastSeen: lastSeenDate,
           country: data.country || '',
           city: data.city || '',
           age: data.age || 0,
