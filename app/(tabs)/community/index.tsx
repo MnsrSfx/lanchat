@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
+  ScrollView,
+  Modal,
 } from 'react-native';
 import { router, Stack } from 'expo-router';
-import { Search, Filter, MapPin, Circle } from 'lucide-react-native';
+import { Search, Filter, MapPin, Circle, X, ChevronDown, RotateCcw } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import Avatar from '@/components/Avatar';
 import { LANGUAGES } from '@/constants/languages';
@@ -27,6 +29,37 @@ export default function CommunityScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [minAge, setMinAge] = useState(18);
+  const [maxAge, setMaxAge] = useState(99);
+  const [showAgeModal, setShowAgeModal] = useState(false);
+  const [tempMinAge, setTempMinAge] = useState(18);
+  const [tempMaxAge, setTempMaxAge] = useState(99);
+
+  const ageOptions = useMemo(() => {
+    const ages: number[] = [];
+    for (let i = 18; i <= 99; i++) {
+      ages.push(i);
+    }
+    return ages;
+  }, []);
+
+  const isAgeFilterActive = minAge !== 18 || maxAge !== 99;
+
+  const resetFilters = useCallback(() => {
+    setSelectedLanguage(null);
+    setShowOnlineOnly(false);
+    setMinAge(18);
+    setMaxAge(99);
+    setSearchQuery('');
+  }, []);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (showOnlineOnly) count++;
+    if (selectedLanguage) count++;
+    if (isAgeFilterActive) count++;
+    return count;
+  }, [showOnlineOnly, selectedLanguage, isAgeFilterActive]);
 
   useEffect(() => {
     if (!db) {
@@ -101,6 +134,11 @@ export default function CommunityScreen() {
       filteredList = filteredList.filter(u => u.isOnline);
     }
 
+    filteredList = filteredList.filter(u => {
+      if (!u.age || u.age === 0) return true;
+      return u.age >= minAge && u.age <= maxAge;
+    });
+
     const myLearningCodes = user?.learningLanguages.map(l => l.code) || [];
     
     return filteredList.sort((a, b) => {
@@ -117,7 +155,7 @@ export default function CommunityScreen() {
       
       return 0;
     });
-  }, [users, searchQuery, selectedLanguage, showOnlineOnly, user?.learningLanguages]);
+  }, [users, searchQuery, selectedLanguage, showOnlineOnly, minAge, maxAge, user?.learningLanguages]);
 
   const nativeSpeakers = useMemo(() => {
     const learningLanguages = user?.learningLanguages || [];
@@ -254,26 +292,61 @@ export default function CommunityScreen() {
           onPress={() => setShowFilters(!showFilters)}
         >
           <Filter size={20} color={showFilters ? '#fff' : Colors.light.tint} />
+          {activeFiltersCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
       {showFilters && (
         <View style={styles.filtersContainer}>
-          <TouchableOpacity
-            style={[styles.filterChip, showOnlineOnly && styles.filterChipActive]}
-            onPress={() => setShowOnlineOnly(!showOnlineOnly)}
-          >
-            <Circle size={10} color={showOnlineOnly ? '#fff' : Colors.light.online} fill={showOnlineOnly ? '#fff' : Colors.light.online} />
-            <Text style={[styles.filterChipText, showOnlineOnly && styles.filterChipTextActive]}>
-              Online
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.filterRow}>
+            <TouchableOpacity
+              style={[styles.filterChip, showOnlineOnly && styles.filterChipActive]}
+              onPress={() => setShowOnlineOnly(!showOnlineOnly)}
+            >
+              <Circle size={10} color={showOnlineOnly ? '#fff' : Colors.light.online} fill={showOnlineOnly ? '#fff' : Colors.light.online} />
+              <Text style={[styles.filterChipText, showOnlineOnly && styles.filterChipTextActive]}>
+                Online
+              </Text>
+            </TouchableOpacity>
 
-          <FlatList
-            horizontal
-            data={LANGUAGES.slice(0, 10)}
-            renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.filterChip, isAgeFilterActive && styles.filterChipActive]}
+              onPress={() => {
+                setTempMinAge(minAge);
+                setTempMaxAge(maxAge);
+                setShowAgeModal(true);
+              }}
+            >
+              <Text style={[styles.filterChipText, isAgeFilterActive && styles.filterChipTextActive]}>
+                Age: {minAge}-{maxAge}
+              </Text>
+              <ChevronDown size={14} color={isAgeFilterActive ? '#fff' : Colors.light.text} />
+            </TouchableOpacity>
+
+            {activeFiltersCount > 0 && (
               <TouchableOpacity
+                style={styles.resetButton}
+                onPress={resetFilters}
+              >
+                <RotateCcw size={14} color={Colors.light.tint} />
+                <Text style={styles.resetButtonText}>Reset</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.languageFilters}
+            contentContainerStyle={styles.languageFiltersContent}
+          >
+            {LANGUAGES.slice(0, 10).map((item) => (
+              <TouchableOpacity
+                key={item.code}
                 style={[
                   styles.filterChip,
                   selectedLanguage === item.code && styles.filterChipActive
@@ -290,13 +363,115 @@ export default function CommunityScreen() {
                   {item.name}
                 </Text>
               </TouchableOpacity>
-            )}
-            keyExtractor={item => item.code}
-            showsHorizontalScrollIndicator={false}
-            style={styles.languageFilters}
-          />
+            ))}
+          </ScrollView>
         </View>
       )}
+
+      <Modal
+        visible={showAgeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAgeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Age Range</Text>
+              <TouchableOpacity onPress={() => setShowAgeModal(false)}>
+                <X size={24} color={Colors.light.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.ageSelectors}>
+              <View style={styles.ageSelectorColumn}>
+                <Text style={styles.ageSelectorLabel}>Min Age</Text>
+                <ScrollView 
+                  style={styles.ageScrollView}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {ageOptions.map((age) => (
+                    <TouchableOpacity
+                      key={`min-${age}`}
+                      style={[
+                        styles.ageOption,
+                        tempMinAge === age && styles.ageOptionSelected
+                      ]}
+                      onPress={() => {
+                        setTempMinAge(age);
+                        if (age > tempMaxAge) {
+                          setTempMaxAge(age);
+                        }
+                      }}
+                    >
+                      <Text style={[
+                        styles.ageOptionText,
+                        tempMinAge === age && styles.ageOptionTextSelected
+                      ]}>
+                        {age}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.ageSeparator}>
+                <Text style={styles.ageSeparatorText}>to</Text>
+              </View>
+
+              <View style={styles.ageSelectorColumn}>
+                <Text style={styles.ageSelectorLabel}>Max Age</Text>
+                <ScrollView 
+                  style={styles.ageScrollView}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {ageOptions.filter(age => age >= tempMinAge).map((age) => (
+                    <TouchableOpacity
+                      key={`max-${age}`}
+                      style={[
+                        styles.ageOption,
+                        tempMaxAge === age && styles.ageOptionSelected
+                      ]}
+                      onPress={() => setTempMaxAge(age)}
+                    >
+                      <Text style={[
+                        styles.ageOptionText,
+                        tempMaxAge === age && styles.ageOptionTextSelected
+                      ]}>
+                        {age}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalResetButton}
+                onPress={() => {
+                  setTempMinAge(18);
+                  setTempMaxAge(99);
+                }}
+              >
+                <Text style={styles.modalResetButtonText}>Reset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalApplyButton}
+                onPress={() => {
+                  setMinAge(tempMinAge);
+                  setMaxAge(tempMaxAge);
+                  setShowAgeModal(false);
+                }}
+              >
+                <Text style={styles.modalApplyButtonText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <FlatList
         data={filteredUsers}
@@ -360,9 +535,45 @@ const styles = StyleSheet.create({
   filterButtonActive: {
     backgroundColor: Colors.light.tint,
   },
+  filterBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#FF3B30',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600' as const,
+  },
   filtersContainer: {
     paddingHorizontal: 16,
     paddingBottom: 12,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.light.accentLight,
+    gap: 4,
+  },
+  resetButtonText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    color: Colors.light.tint,
   },
   filterChip: {
     flexDirection: 'row',
@@ -393,6 +604,114 @@ const styles = StyleSheet.create({
   },
   languageFilters: {
     marginTop: 10,
+  },
+  languageFiltersContent: {
+    gap: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: Colors.light.background,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 340,
+    maxHeight: 480,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: Colors.light.text,
+  },
+  ageSelectors: {
+    flexDirection: 'row',
+    padding: 16,
+    alignItems: 'center',
+  },
+  ageSelectorColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  ageSelectorLabel: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.light.textSecondary,
+    marginBottom: 12,
+  },
+  ageScrollView: {
+    height: 240,
+  },
+  ageOption: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginVertical: 2,
+    alignItems: 'center',
+  },
+  ageOptionSelected: {
+    backgroundColor: Colors.light.tint,
+  },
+  ageOptionText: {
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  ageOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600' as const,
+  },
+  ageSeparator: {
+    paddingHorizontal: 16,
+    paddingTop: 32,
+  },
+  ageSeparatorText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
+  },
+  modalResetButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.light.surface,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    alignItems: 'center',
+  },
+  modalResetButtonText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+  },
+  modalApplyButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.light.tint,
+    alignItems: 'center',
+  },
+  modalApplyButtonText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: '#fff',
   },
   listContent: {
     paddingBottom: 100,
