@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { User, AuthState } from '@/types';
-import { MOCK_CURRENT_USER } from '@/mocks/users';
+
 import { auth, db, storage } from '@/src/firebase';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
@@ -235,24 +235,42 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             user = { ...parsed.user, uid: firebaseUser.uid, isOnline: true };
           } else {
             user = { 
-              ...MOCK_CURRENT_USER, 
               id: firebaseUser.uid,
               uid: firebaseUser.uid,
               email,
               name: firebaseUser.displayName || email.split('@')[0],
               avatar: firebaseUser.photoURL || '',
+              photos: [],
+              bio: '',
+              nativeLanguage: { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
+              learningLanguages: [],
               isOnline: true,
+              lastSeen: new Date(),
+              country: '',
+              city: '',
+              age: 0,
+              isVerified: false,
+              createdAt: new Date(),
             };
           }
         } else {
           user = { 
-            ...MOCK_CURRENT_USER, 
             id: firebaseUser.uid,
             uid: firebaseUser.uid,
             email,
             name: firebaseUser.displayName || email.split('@')[0],
             avatar: firebaseUser.photoURL || '',
+            photos: [],
+            bio: '',
+            nativeLanguage: { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
+            learningLanguages: [],
             isOnline: true,
+            lastSeen: new Date(),
+            country: '',
+            city: '',
+            age: 0,
+            isVerified: false,
+            createdAt: new Date(),
           };
         }
 

@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView } from 'react-native';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
-import { MOCK_USERS, MOCK_CHATS, MOCK_MESSAGES } from '../mocks/users';
 import { LANGUAGES } from '../constants/languages';
 import Colors from '../constants/colors';
-import type { User, Chat, Message } from '../types';
+
 
 const queryClient = new QueryClient();
 
@@ -186,32 +185,9 @@ function RegisterScreen({ onNavigate }: { onNavigate: (screen: string) => void }
 }
 
 function CommunityScreen({ onNavigate }: { onNavigate: (screen: string, params?: any) => void }) {
-  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null);
   const [showOnlineOnly, setShowOnlineOnly] = useState(false);
-
-  const filteredUsers = useMemo(() => {
-    let users = MOCK_USERS;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      users = users.filter(u =>
-        u.name.toLowerCase().includes(query) ||
-        u.country.toLowerCase().includes(query) ||
-        u.city.toLowerCase().includes(query)
-      );
-    }
-    if (selectedLanguage) {
-      users = users.filter(u =>
-        u.nativeLanguage.code === selectedLanguage ||
-        u.learningLanguages.some(l => l.code === selectedLanguage)
-      );
-    }
-    if (showOnlineOnly) {
-      users = users.filter(u => u.isOnline);
-    }
-    return users;
-  }, [searchQuery, selectedLanguage, showOnlineOnly]);
 
   return (
     <View style={styles.screenContainer}>
@@ -244,37 +220,11 @@ function CommunityScreen({ onNavigate }: { onNavigate: (screen: string, params?:
         </ScrollView>
       </View>
 
-      <Text style={styles.resultsCount}>{filteredUsers.length} members found</Text>
+      <Text style={styles.resultsCount}>0 members found</Text>
 
-      <ScrollView style={styles.usersList}>
-        {filteredUsers.map(item => (
-          <TouchableOpacity
-            key={item.id}
-            style={styles.userCard}
-            onPress={() => onNavigate('userProfile', { userId: item.id })}
-          >
-            <View style={styles.avatarContainer}>
-              <Image source={{ uri: item.avatar }} style={styles.avatar} />
-              <View style={[styles.onlineIndicator, item.isOnline ? styles.online : styles.offline]} />
-            </View>
-
-            <View style={styles.userInfo}>
-              <View style={styles.nameRow}><Text style={styles.userName}>{item.name}</Text>{item.isVerified && (<View style={styles.verifiedBadge}><Text style={styles.verifiedText}>Verified</Text></View>)}</View>
-
-              <Text style={styles.locationText}>📍 {item.city}, {item.country}</Text>
-
-              <View style={styles.languagesRow}><Text style={styles.nativeFlag}>{item.nativeLanguage.flag}</Text><Text style={styles.languageArrow}>{"→"}</Text>{item.learningLanguages.slice(0, 3).map(lang => (<Text key={lang.code} style={styles.learningFlag}>{lang.flag}</Text>))}</View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.chatButton}
-              onPress={() => onNavigate('chat', { userId: item.id })}
-            >
-              <Text style={styles.chatButtonText}>Chat</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.emptyChats}>
+        <Text style={styles.emptyChatsText}>No users available</Text>
+      </View>
     </View>
   );
 }
@@ -284,97 +234,24 @@ function ChatsScreen({ onNavigate }: { onNavigate: (screen: string, params?: any
     <View style={styles.screenContainer}>
       <Text style={styles.screenTitle}>Chats</Text>
       <ScrollView style={styles.chatsList}>
-        {MOCK_CHATS.map(chat => {
-          const otherUser = chat.participants.find(p => p.id !== 'current');
-          if (!otherUser) return null;
-          
-          return (
-            <TouchableOpacity
-              key={chat.id}
-              style={styles.chatItem}
-              onPress={() => onNavigate('chat', { userId: otherUser.id })}
-            >
-              <View style={styles.avatarContainer}>
-                <Image source={{ uri: otherUser.avatar }} style={styles.avatar} />
-                <View style={[styles.onlineIndicator, otherUser.isOnline ? styles.online : styles.offline]} />
-              </View>
-              
-              <View style={styles.chatInfo}>
-                <Text style={styles.chatName}>{otherUser.name}</Text>
-                <Text style={styles.chatLastMessage} numberOfLines={1}>
-                  {chat.lastMessage?.content}
-                </Text>
-              </View>
-              
-              {chat.unreadCount > 0 && (
-                <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadText}>{chat.unreadCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
+        <View style={styles.emptyChats}>
+          <Text style={styles.emptyChatsText}>No chats yet</Text>
+        </View>
       </ScrollView>
     </View>
   );
 }
 
-function ChatScreen({ userId, onNavigate }: { userId: string; onNavigate: (screen: string) => void }) {
-  const [message, setMessage] = useState('');
-  const user = MOCK_USERS.find(u => u.id === userId);
-  const messages = MOCK_MESSAGES.filter(m => m.chatId === 'chat1');
-
-  if (!user) {
-    return (
-      <View style={styles.screenContainer}>
-        <Text>User not found</Text>
-      </View>
-    );
-  }
-
+function ChatScreen({ onNavigate }: { userId: string; onNavigate: (screen: string) => void }) {
   return (
     <View style={styles.screenContainer}>
       <View style={styles.chatHeader}>
         <TouchableOpacity onPress={() => onNavigate('chats')}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
-        <Image source={{ uri: user.avatar }} style={styles.chatHeaderAvatar} />
-        <View>
-          <Text style={styles.chatHeaderName}>{user.name}</Text>
-          <Text style={styles.chatHeaderStatus}>{user.isOnline ? 'Online' : 'Offline'}</Text>
-        </View>
       </View>
-
-      <ScrollView style={styles.messagesContainer}>
-        {messages.map(msg => (
-          <View
-            key={msg.id}
-            style={[
-              styles.messageBubble,
-              msg.senderId === 'current' ? styles.myMessage : styles.theirMessage
-            ]}
-          >
-            <Text style={[
-              styles.messageText,
-              msg.senderId === 'current' ? styles.myMessageText : styles.theirMessageText
-            ]}>
-              {msg.content}
-            </Text>
-          </View>
-        ))}
-      </ScrollView>
-
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.messageInput}
-          placeholder="Type a message..."
-          placeholderTextColor={Colors.light.textSecondary}
-          value={message}
-          onChangeText={setMessage}
-        />
-        <TouchableOpacity style={styles.sendButton}>
-          <Text style={styles.sendButtonText}>Send</Text>
-        </TouchableOpacity>
+      <View style={styles.emptyChats}>
+        <Text style={styles.emptyChatsText}>User not found</Text>
       </View>
     </View>
   );
@@ -1037,5 +914,15 @@ const styles = StyleSheet.create({
   activeTabText: {
     color: Colors.light.tint,
     fontWeight: '600',
+  },
+  emptyChats: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyChatsText: {
+    fontSize: 16,
+    color: Colors.light.textSecondary,
   },
 });
