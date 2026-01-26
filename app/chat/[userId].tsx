@@ -640,16 +640,8 @@ export default function ChatScreen() {
     );
   };
 
-  const handleTranslateMessage = async () => {
-    if (!selectedMessageId) {
-      setShowMessageMenu(false);
-      return;
-    }
-    
-    const message = messages.find(m => m.id === selectedMessageId);
-    const messageId = selectedMessageId;
-    setShowMessageMenu(false);
-    setSelectedMessageId(null);
+  const translateMessage = async (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
     
     if (!message || message.type !== 'text' || !message.content.trim()) {
       return;
@@ -699,6 +691,19 @@ export default function ChatScreen() {
     } finally {
       setTranslatingId(null);
     }
+  };
+
+  const handleTranslateMessage = async () => {
+    if (!selectedMessageId) {
+      setShowMessageMenu(false);
+      return;
+    }
+    
+    const messageId = selectedMessageId;
+    setShowMessageMenu(false);
+    setSelectedMessageId(null);
+    
+    await translateMessage(messageId);
   };
 
   const handleReportMessage = () => {
@@ -784,13 +789,29 @@ export default function ChatScreen() {
     const isReplyFromMe = item.replyToSenderId === currentUser?.uid;
     const translation = translations[item.id];
     const isTranslating = translatingId === item.id;
+    const showTranslateButton = item.type === 'text' && item.content.trim() && !translation;
 
     return (
       <View style={[styles.messageWrapper, isOwn ? styles.messageWrapperOwn : styles.messageWrapperOther]}>
-        <Pressable 
-          style={[styles.messageBubble, isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther]}
-          onLongPress={() => handleLongPressMessage(item.id)}
-        >
+        <View style={[styles.messageRow, isOwn ? styles.messageRowOwn : styles.messageRowOther]}>
+          {isOwn && showTranslateButton && (
+            <TouchableOpacity
+              style={styles.translateButton}
+              onPress={() => translateMessage(item.id)}
+              disabled={isTranslating}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {isTranslating ? (
+                <ActivityIndicator size={14} color={Colors.light.textSecondary} />
+              ) : (
+                <Languages size={14} color={Colors.light.textSecondary} />
+              )}
+            </TouchableOpacity>
+          )}
+          <Pressable 
+            style={[styles.messageBubble, isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther]}
+            onLongPress={() => handleLongPressMessage(item.id)}
+          >
           {item.replyToId && (
             <View style={[styles.replyContainer, isOwn ? styles.replyContainerOwn : styles.replyContainerOther]}>
               <View style={[styles.replyBar, isOwn ? styles.replyBarOwn : styles.replyBarOther]} />
@@ -896,7 +917,22 @@ export default function ChatScreen() {
               </View>
             )}
           </View>
-        </Pressable>
+          </Pressable>
+          {!isOwn && showTranslateButton && (
+            <TouchableOpacity
+              style={styles.translateButton}
+              onPress={() => translateMessage(item.id)}
+              disabled={isTranslating}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {isTranslating ? (
+                <ActivityIndicator size={14} color={Colors.light.textSecondary} />
+              ) : (
+                <Languages size={14} color={Colors.light.textSecondary} />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   };
@@ -1197,6 +1233,28 @@ const styles = StyleSheet.create({
   },
   messageWrapperOther: {
     alignItems: 'flex-start',
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  messageRowOwn: {
+    flexDirection: 'row',
+  },
+  messageRowOther: {
+    flexDirection: 'row',
+  },
+  translateButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.light.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    marginBottom: 4,
   },
   messageBubble: {
     maxWidth: '80%',
