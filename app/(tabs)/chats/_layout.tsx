@@ -1,45 +1,27 @@
-import { Tabs } from 'expo-router';
-import { MessageSquare, User, Settings } from 'lucide-react-native'; // ikonlar için, yoksa kendi ikonlarını kullan
+import { Stack } from 'expo-router';
 import Colors from '@/constants/colors';
 
-export default function TabsLayout() {
+export default function ChatsLayout() {
   return (
-    <Tabs
+    <Stack
       screenOptions={{
-        tabBarActiveTintColor: Colors.light.tint,
-        tabBarInactiveTintColor: Colors.light.textSecondary,
-        tabBarStyle: { backgroundColor: Colors.light.background },
-        headerShown: false, // header'ı ekranlarda yöneteceğiz
+        headerStyle: {
+          backgroundColor: Colors.light.background,
+        },
+        headerTintColor: Colors.light.text,
+        headerTitleStyle: {
+          fontWeight: '600',
+        },
+        headerShadowVisible: false,
       }}
     >
-      {/* Chats tab'ı - ilk sırada, default olarak açılsın */}
-      <Tabs.Screen
-        name="chats"
+      <Stack.Screen
+        name="index"
         options={{
           title: 'Chats',
-          tabBarIcon: ({ color, size }) => (
-            <MessageSquare size={size} color={color} />
-          ),
-          href: '/chats', // URL'yi /chats olarak zorla (manuel girilince de çalışsın)
+          headerShown: true,
         }}
       />
-
-      {/* Diğer tab'lar (profil, ayarlar vs.) */}
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
-        }}
-      />
-
-      <Tabs.Screen
-        name="settings" // varsa ekle, yoksa bu satırı sil
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color, size }) => <Settings size={size} color={color} />,
-        }}
-      />
-    </Tabs>
+    </Stack>
   );
 }

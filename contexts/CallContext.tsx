@@ -532,6 +532,13 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         // Call was accepted - stop all ringing sounds for both sides
         console.log('📞 Call accepted - stopping ALL ring sounds immediately');
         
+        // IMPORTANT: Clear the call timeout so it doesn't end the call after 45 seconds!
+        if (callTimeoutRef.current) {
+          console.log('📞 Clearing call timeout - call was accepted');
+          clearTimeout(callTimeoutRef.current);
+          callTimeoutRef.current = null;
+        }
+        
         // Force stop all audio
         stopRingtone();
         stopRingback();
