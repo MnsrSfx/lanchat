@@ -54,21 +54,27 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const isWebRTCSupported = webRTCService.isSupported();
   const isEndingCallRef = useRef(false);
   const callMessageSavedRef = useRef<Set<string>>(new Set());
+  const callAnsweredAtRef = useRef<number | null>(null);
+  const callDurationRef = useRef<number>(0);
+  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const saveCallMessageToChat = useCallback(async (
     callerId: string,
     receiverId: string,
     callStatus: 'completed' | 'missed' | 'declined',
     callDuration: number,
-    callId: string
+    callId: string,
+    forceSave: boolean = false
   ) => {
     if (!db) return;
     
-    if (callMessageSavedRef.current.has(callId)) {
+    if (!forceSave && callMessageSavedRef.current.has(callId)) {
       console.log('📞 Call message already saved for:', callId);
       return;
     }
     callMessageSavedRef.current.add(callId);
+    
+    console.log('📞 saveCallMessageToChat called with duration:', callDuration, 'status:', callStatus);
 
     try {
       const chatId = [callerId, receiverId].sort().join('_');
@@ -503,20 +509,35 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
           if (updatedCall.status === 'missed') callStatus = 'missed';
           else if (updatedCall.status === 'declined') callStatus = 'declined';
 
-          let callDuration = 0;
-          if (updatedCall.answeredAt && updatedCall.endedAt) {
-            callDuration = Math.floor((updatedCall.endedAt.getTime() - updatedCall.answeredAt.getTime()) / 1000);
-          } else if (updatedCall.answeredAt) {
-            callDuration = Math.floor((Date.now() - updatedCall.answeredAt.getTime()) / 1000);
+          // Use tracked duration from client-side timer (more accurate)
+          let finalDuration = callDurationRef.current;
+          
+          // Fallback to timestamp calculation if client duration not available
+          if (finalDuration === 0 && updatedCall.answeredAt) {
+            if (updatedCall.endedAt) {
+              finalDuration = Math.floor((updatedCall.endedAt.getTime() - updatedCall.answeredAt.getTime()) / 1000);
+            } else if (callAnsweredAtRef.current) {
+              finalDuration = Math.floor((Date.now() - callAnsweredAtRef.current) / 1000);
+            }
           }
+          
+          console.log('📞 Final call duration calculated:', finalDuration, 'seconds');
 
           saveCallMessageToChat(
             updatedCall.callerId,
             updatedCall.receiverId,
             callStatus,
-            callDuration,
+            finalDuration,
             updatedCall.id
           );
+
+          // Clear duration tracking
+          if (durationIntervalRef.current) {
+            clearInterval(durationIntervalRef.current);
+            durationIntervalRef.current = null;
+          }
+          callAnsweredAtRef.current = null;
+          callDurationRef.current = 0;
 
           webRTCService.cleanup();
           setActiveCall(null);
@@ -557,6 +578,23 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
           stopAllWebAudio();
           console.log('📞 Triple-checked all audio stopped');
         }, 300);
+        
+        // Start tracking call duration from client side
+        if (!callAnsweredAtRef.current) {
+          callAnsweredAtRef.current = Date.now();
+          callDurationRef.current = 0;
+          console.log('📞 Started duration tracking at:', callAnsweredAtRef.current);
+          
+          // Start interval to track duration
+          if (durationIntervalRef.current) {
+            clearInterval(durationIntervalRef.current);
+          }
+          durationIntervalRef.current = setInterval(() => {
+            if (callAnsweredAtRef.current) {
+              callDurationRef.current = Math.floor((Date.now() - callAnsweredAtRef.current) / 1000);
+            }
+          }, 1000);
+        }
         
         setActiveCall(updatedCall);
       } else if (updatedCall.status !== activeCall.status) {
@@ -776,6 +814,16 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       callTimeoutRef.current = null;
     }
 
+    // Get current duration before cleanup
+    const currentDuration = callDurationRef.current;
+    console.log('📞 endCall - current tracked duration:', currentDuration);
+    
+    // Clear duration tracking
+    if (durationIntervalRef.current) {
+      clearInterval(durationIntervalRef.current);
+      durationIntervalRef.current = null;
+    }
+    
     // Always cleanup local state even if no active call
     await webRTCService.cleanup();
     stopRingtone();
@@ -791,6 +839,8 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
     
     if (!callToEnd?.id || !db) {
       console.log('📞 No active call to end, cleaned up local state');
+      callAnsweredAtRef.current = null;
+      callDurationRef.current = 0;
       return;
     }
 
@@ -813,7 +863,8 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
           callToEnd.receiverId,
           'missed',
           0,
-          callToEnd.id
+          callToEnd.id,
+          true // force save
         );
         
         await updateDoc(callDocRef, {
@@ -822,12 +873,31 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
           endedBy: user?.uid,
         });
       } else {
+        // Save call message before updating status for completed calls
+        const wasAnswered = callToEnd.status === 'accepted' || callAnsweredAtRef.current !== null;
+        if (wasAnswered && currentDuration > 0) {
+          console.log('📞 Saving completed call with duration:', currentDuration);
+          await saveCallMessageToChat(
+            callToEnd.callerId,
+            callToEnd.receiverId,
+            'completed',
+            currentDuration,
+            callToEnd.id,
+            true // force save
+          );
+        }
+        
         await updateDoc(callDocRef, {
           status: 'ended',
           endedAt: serverTimestamp(),
           endedBy: user?.uid,
+          actualDuration: currentDuration, // Store actual duration in Firestore
         });
       }
+      
+      // Reset duration tracking
+      callAnsweredAtRef.current = null;
+      callDurationRef.current = 0;
       
       console.log('📞 Call ended successfully');
     } catch (error) {
