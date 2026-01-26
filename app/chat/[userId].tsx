@@ -916,20 +916,37 @@ export default function ChatScreen() {
               <ChevronLeft size={28} color={Colors.light.text} />
             </TouchableOpacity>
           ),
-          headerTitle: () => (
-            <TouchableOpacity 
-              style={styles.headerTitle}
-              onPress={() => router.push(`/(tabs)/community/user/${user.id}` as any)}
-            >
-              <Avatar uri={user.avatar} name={user.name} size={36} />
-              <View>
-                <Text style={styles.headerName}>{user.name}</Text>
-                <Text style={styles.headerStatus}>
-                  {user.isOnline ? 'Online' : 'Offline'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ),
+          headerTitle: () => {
+            const formatLastSeen = (date: Date) => {
+              const now = new Date();
+              const diff = now.getTime() - date.getTime();
+              const minutes = Math.floor(diff / 60000);
+              const hours = Math.floor(diff / 3600000);
+              const days = Math.floor(diff / 86400000);
+
+              if (minutes < 1) return 'Last seen just now';
+              if (minutes < 60) return `Last seen ${minutes}m ago`;
+              if (hours < 24) return `Last seen ${hours}h ago`;
+              if (days === 1) return 'Last seen yesterday';
+              if (days < 7) return `Last seen ${days}d ago`;
+              return `Last seen ${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+            };
+
+            return (
+              <TouchableOpacity 
+                style={styles.headerTitle}
+                onPress={() => router.push(`/(tabs)/community/user/${user.id}` as any)}
+              >
+                <Avatar uri={user.avatar} name={user.name} size={36} />
+                <View>
+                  <Text style={styles.headerName}>{user.name}</Text>
+                  <Text style={styles.headerStatus}>
+                    {user.isOnline ? 'Online' : formatLastSeen(user.lastSeen)}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          },
           headerRight: () => (
             <TouchableOpacity 
               style={styles.headerButton}

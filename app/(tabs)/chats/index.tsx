@@ -298,7 +298,9 @@ export default function ChatsScreen() {
           defaultSource={{ uri: 'https://ui-avatars.com/api/?name=User&size=112&background=6366f1&color=fff' }}
           onError={() => console.log('⚠️ Avatar failed to load for:', item.otherUser.name)}
         />
-        <View style={[styles.onlineIndicator, item.otherUser.isOnline ? styles.online : styles.offline]} />
+        {item.otherUser.isOnline && (
+          <View style={[styles.onlineIndicator, styles.online]} />
+        )}
       </View>
 
       <View style={styles.chatContent}>
