@@ -52,8 +52,13 @@ function RootLayoutNav() {
         const inProfileSetup = segments[0] === 'profile-setup';
         const inVerifyEmail = segments[0] === '(auth)' && segments[1] === 'verify-email';
         const inTabs = segments[0] === '(tabs)';
+        const inPrivacy = segments[0] === 'privacy';
 
         console.log('Navigation check:', { isAuthenticated, needsEmailVerification, needsProfileSetup, user: !!user, segments });
+
+        if (inPrivacy) {
+          return;
+        }
 
         if (!isAuthenticated && !needsEmailVerification && !inAuth) {
           console.log('Not authenticated, redirecting to login');
