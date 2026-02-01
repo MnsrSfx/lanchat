@@ -12,7 +12,7 @@ import {
   Linking,
   Platform,
 } from 'react-native';
-import { X, Mail, MessageCircle, ExternalLink, ChevronLeft, Check } from 'lucide-react-native';
+import { X, Mail, MessageCircle, ExternalLink, ChevronLeft, Check, Trash2 } from 'lucide-react-native';
 import { router, Stack } from 'expo-router';
 import Avatar from '@/components/Avatar';
 import { 
@@ -31,7 +31,7 @@ import Colors from '@/constants/colors';
 import PhotoGalleryModal from '@/components/PhotoGalleryModal';
 
 export default function ProfileScreen() {
-  const { user, logout, updateProfile } = useAuth();
+  const { user, logout, updateProfile, deleteAccount, isDeleteAccountLoading } = useAuth();
   const { hasPermission, isSupported, requestPermission } = useNotifications();
   const [notificationsEnabled, setNotificationsEnabled] = useState(hasPermission);
   const [galleryVisible, setGalleryVisible] = useState(false);
@@ -54,6 +54,30 @@ export default function ProfileScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Log Out', style: 'destructive', onPress: () => logout() },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to delete your account? This action cannot be undone. All your data, messages, and profile information will be permanently deleted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive', 
+          onPress: () => {
+            Alert.alert(
+              'Final Confirmation',
+              'This is your last chance. Are you absolutely sure you want to delete your account?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Yes, Delete My Account', style: 'destructive', onPress: () => deleteAccount() },
+              ]
+            );
+          }
+        },
       ]
     );
   };
@@ -226,6 +250,17 @@ export default function ProfileScreen() {
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <LogOut size={20} color={Colors.light.error} />
         <Text style={styles.logoutText}>Log Out</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={styles.deleteAccountButton} 
+        onPress={handleDeleteAccount}
+        disabled={isDeleteAccountLoading}
+      >
+        <Trash2 size={20} color="#fff" />
+        <Text style={styles.deleteAccountText}>
+          {isDeleteAccountLoading ? 'Deleting...' : 'Delete Account'}
+        </Text>
       </TouchableOpacity>
 
       <View style={styles.footer}>
@@ -665,6 +700,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.light.error,
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.light.error,
+  },
+  deleteAccountText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: '#fff',
   },
   footer: {
     alignItems: 'center',

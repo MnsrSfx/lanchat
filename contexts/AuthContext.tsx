@@ -18,9 +18,10 @@ import {
   signInWithRedirect,
   getRedirectResult,
   sendPasswordResetEmail,
-  sendEmailVerification
+  sendEmailVerification,
+  deleteUser
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 
@@ -739,6 +740,77 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     },
   });
 
+  const deleteAccountMutation = useMutation({
+    mutationFn: async () => {
+      if (!firebaseAuth?.currentUser || !firebaseDb) {
+        throw new Error('No user is currently signed in');
+      }
+      
+      const userId = firebaseAuth.currentUser.uid;
+      console.log('Starting account deletion for user:', userId);
+      
+      try {
+        // Delete user's messages
+        try {
+          const messagesQuery = query(collection(firebaseDb, 'messages'), where('senderId', '==', userId));
+          const messagesSnapshot = await getDocs(messagesQuery);
+          for (const msgDoc of messagesSnapshot.docs) {
+            await deleteDoc(msgDoc.ref);
+          }
+          console.log('Deleted user messages');
+        } catch (e) {
+          console.log('Error deleting messages:', e);
+        }
+        
+        // Delete user's chats
+        try {
+          const chatsQuery = query(collection(firebaseDb, 'chats'), where('participants', 'array-contains', userId));
+          const chatsSnapshot = await getDocs(chatsQuery);
+          for (const chatDoc of chatsSnapshot.docs) {
+            await deleteDoc(chatDoc.ref);
+          }
+          console.log('Deleted user chats');
+        } catch (e) {
+          console.log('Error deleting chats:', e);
+        }
+        
+        // Delete user document
+        await deleteDoc(doc(firebaseDb, 'users', userId));
+        console.log('Deleted user document');
+        
+        // Delete Firebase Auth user
+        await deleteUser(firebaseAuth.currentUser);
+        console.log('Deleted Firebase Auth user');
+        
+        // Clear local storage
+        await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+        console.log('Cleared local storage');
+        
+        return true;
+      } catch (error: any) {
+        console.error('Delete account error:', error);
+        
+        let userFriendlyMessage = 'Failed to delete account. Please try again.';
+        
+        if (error.code === 'auth/requires-recent-login') {
+          userFriendlyMessage = 'Please log out and log in again before deleting your account.';
+        }
+        
+        throw new Error(userFriendlyMessage);
+      }
+    },
+    onSuccess: () => {
+      console.log('Account deleted successfully');
+      setAuthState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        needsProfileSetup: false,
+      });
+      setNeedsEmailVerification(false);
+    },
+  });
+
   const googleLoginMutation = useMutation({
     mutationFn: async (): Promise<{ authData: StoredAuth; shouldRedirect: boolean }> => {
       if (!firebaseAuth || !firebaseDb) {
@@ -921,6 +993,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     logout: logoutMutation.mutate,
     resendVerification: resendVerificationMutation.mutate,
     resetPassword: resetPasswordMutation.mutate,
+    deleteAccount: deleteAccountMutation.mutate,
     isLoginLoading: loginMutation.isPending,
     isRegisterLoading: registerMutation.isPending,
     isGoogleLoading: googleLoginMutation.isPending,
@@ -928,12 +1001,14 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     isUpdateLoading: updateProfileMutation.isPending,
     isResetPasswordLoading: resetPasswordMutation.isPending,
     isResendVerificationLoading: resendVerificationMutation.isPending,
+    isDeleteAccountLoading: deleteAccountMutation.isPending,
     loginError: loginMutation.error?.message,
     registerError: registerMutation.error?.message,
     googleError: googleLoginMutation.error?.message,
     checkVerificationError: checkEmailVerificationMutation.error?.message,
     resendVerificationError: resendVerificationMutation.error?.message,
     resetPasswordError: resetPasswordMutation.error?.message,
+    deleteAccountError: deleteAccountMutation.error?.message,
     resetPasswordSuccess: resetPasswordMutation.isSuccess,
     resendVerificationSuccess: resendVerificationMutation.isSuccess,
   };
