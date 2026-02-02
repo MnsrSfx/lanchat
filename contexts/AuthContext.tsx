@@ -15,8 +15,7 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithCredential,
   sendPasswordResetEmail,
   sendEmailVerification,
   deleteUser
@@ -24,6 +23,12 @@ import {
 import { doc, setDoc, serverTimestamp, getDoc, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Platform, AppState, AppStateStatus } from 'react-native';
+import * as AuthSession from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
+
+WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '';
 
 const AUTH_STORAGE_KEY = 'lanchat_auth';
 const AUTH_TIMEOUT_MS = 10000;
@@ -819,26 +824,65 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       
       try {
         console.log('Google login attempt, Platform:', Platform.OS);
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({
-          prompt: 'select_account'
-        });
         
-        let result;
+        let firebaseUser;
+        
         if (Platform.OS === 'web') {
           console.log('Using signInWithPopup for web');
-          result = await signInWithPopup(firebaseAuth, provider);
+          const provider = new GoogleAuthProvider();
+          provider.setCustomParameters({
+            prompt: 'select_account'
+          });
+          const result = await signInWithPopup(firebaseAuth, provider);
           console.log('signInWithPopup result:', result);
+          firebaseUser = result.user;
         } else {
-          console.log('Using signInWithRedirect for native');
-          await signInWithRedirect(firebaseAuth, provider);
-          result = await getRedirectResult(firebaseAuth);
-          if (!result) {
-            throw new Error('Redirect result is null');
+          console.log('Using expo-auth-session for native');
+          
+          const redirectUri = AuthSession.makeRedirectUri({
+            scheme: 'lanchat-app',
+            path: 'auth'
+          });
+          console.log('Redirect URI:', redirectUri);
+          
+          const discovery = {
+            authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+            tokenEndpoint: 'https://oauth2.googleapis.com/token',
+          };
+          
+          const authRequest = new AuthSession.AuthRequest({
+            clientId: GOOGLE_WEB_CLIENT_ID,
+            redirectUri,
+            scopes: ['openid', 'profile', 'email'],
+            responseType: AuthSession.ResponseType.IdToken,
+            extraParams: {
+              nonce: Math.random().toString(36).substring(2, 15),
+            },
+          });
+          
+          console.log('Starting auth request...');
+          const authResult = await authRequest.promptAsync(discovery);
+          console.log('Auth result:', authResult);
+          
+          if (authResult.type !== 'success') {
+            if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
+              throw new Error('Sign-in cancelled. Please try again.');
+            }
+            throw new Error('Google sign-in failed. Please try again.');
           }
+          
+          const idToken = authResult.params?.id_token;
+          if (!idToken) {
+            console.error('No ID token in response:', authResult);
+            throw new Error('No ID token received from Google.');
+          }
+          
+          console.log('Got ID token, signing in with Firebase...');
+          const credential = GoogleAuthProvider.credential(idToken);
+          const userCredential = await signInWithCredential(firebaseAuth, credential);
+          firebaseUser = userCredential.user;
         }
         
-        const firebaseUser = result.user;
         console.log('Google auth successful, uid:', firebaseUser.uid);
         
         let user: User;
