@@ -8,6 +8,10 @@
     ],
     "rewrites": [
       {
+        "source": "/.well-known/**",
+        "destination": "/.well-known/assetlinks.json"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

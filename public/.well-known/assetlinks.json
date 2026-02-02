@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.lanchat.rebuild",
+      "sha256_cert_fingerprints": [
+        "37:9D:AA:B3:9F:CE:78:F7:9C:BB:6D:D4:C2:27:75:10:9A:FC:43:18:FB:EE:04:4B:CF:57:21:FD:19:90:C3:BD"
+      ]
+    }
+  }
+]
