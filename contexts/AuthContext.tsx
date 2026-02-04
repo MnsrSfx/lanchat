@@ -855,7 +855,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             redirectUri,
             scopes: ['openid', 'profile', 'email'],
             responseType: AuthSession.ResponseType.IdToken,
-            usePKCE: false,
             extraParams: {
               nonce: Math.random().toString(36).substring(2, 15),
             },
