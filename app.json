@@ -65,7 +65,8 @@
         {
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone"
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
