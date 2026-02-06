@@ -15,6 +15,8 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithCredential,
   sendPasswordResetEmail,
   sendEmailVerification,
@@ -108,6 +110,45 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       }
     }
   }, [authQuery.data]);
+
+  useEffect(() => {
+    if (!firebaseAuth || !firebaseDb || Platform.OS !== 'web') return;
+    console.log('🔄 Checking for Google redirect result...');
+    getRedirectResult(firebaseAuth).then(async (result) => {
+      if (result && result.user) {
+        console.log('✅ Got redirect result, user:', result.user.uid);
+        const userRef = doc(firebaseDb, 'users', result.user.uid);
+        const userSnap = await getDoc(userRef);
+        let user: User;
+        if (userSnap.exists()) {
+          user = { id: userSnap.id, ...userSnap.data() } as User;
+        } else {
+          user = {
+            id: result.user.uid,
+            email: result.user.email || '',
+            displayName: result.user.displayName || '',
+            photoURL: result.user.photoURL || '',
+            nativeLanguage: '',
+            learningLanguages: [],
+            proficiencyLevel: 'beginner',
+            bio: '',
+            interests: [],
+            country: '',
+            isOnline: true,
+            createdAt: new Date().toISOString(),
+            profileComplete: false,
+          };
+          await setDoc(userRef, { ...user, createdAt: serverTimestamp(), lastSeen: serverTimestamp() });
+        }
+        const needsSetup = !user.profileComplete;
+        const authData: StoredAuth = { user, isAuthenticated: true, needsProfileSetup: needsSetup, needsEmailVerification: false };
+        await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
+        setAuthState({ user, isAuthenticated: true, isLoading: false, needsProfileSetup: needsSetup });
+      }
+    }).catch((error) => {
+      console.error('❌ Redirect result error:', error);
+    });
+  }, [firebaseAuth, firebaseDb]);
 
   useEffect(() => {
     if (!firebaseAuth || !firebaseDb) {
@@ -835,9 +876,15 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           provider.setCustomParameters({
             prompt: 'select_account'
           });
-          const result = await signInWithPopup(firebaseAuth, provider);
-          console.log('signInWithPopup result:', result);
-          firebaseUser = result.user;
+          try {
+            const result = await signInWithPopup(firebaseAuth, provider);
+            console.log('signInWithPopup result:', result);
+            firebaseUser = result.user;
+          } catch (popupError: any) {
+            console.warn('signInWithPopup failed, trying redirect:', popupError?.code);
+            await signInWithRedirect(firebaseAuth, provider);
+            return { authData: { user: null, isAuthenticated: false, needsProfileSetup: false, needsEmailVerification: false }, shouldRedirect: false };
+          }
         } else {
           console.log('Using expo-auth-session for native');
           
