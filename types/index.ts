@@ -16,6 +16,9 @@ export interface User {
   isVerified: boolean;
   createdAt: Date;
   notificationsEnabled?: boolean;
+  showOnlineStatus?: boolean;
+  showReadReceipts?: boolean;
+  profileVisibility?: 'everyone' | 'matches' | 'nobody';
 }
 
 export interface Language {
