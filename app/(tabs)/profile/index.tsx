@@ -43,7 +43,7 @@ export default function ProfileScreen() {
   
   const [showOnlineStatus, setShowOnlineStatus] = useState(user?.showOnlineStatus !== false);
   const [showReadReceipts, setShowReadReceipts] = useState(user?.showReadReceipts !== false);
-  const [profileVisibility, setProfileVisibility] = useState<'everyone' | 'contacts'>(user?.profileVisibility || 'everyone');
+  const [profileVisibility, setProfileVisibility] = useState<'everyone' | 'matches' | 'nobody'>(user?.profileVisibility || 'everyone');
 
   const photos = user?.photos && user.photos.length > 0 ? user.photos : user?.avatar ? [user.avatar] : [];
 
@@ -335,13 +335,13 @@ export default function ProfileScreen() {
             <Text style={styles.visibilityDesc}>Anyone can see your profile</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.visibilityOption, profileVisibility === 'contacts' && styles.visibilityOptionActive]}
+            style={[styles.visibilityOption, profileVisibility === 'matches' && styles.visibilityOptionActive]}
             onPress={() => {
-              setProfileVisibility('contacts');
-              updateProfile({ profileVisibility: 'contacts' });
+              setProfileVisibility('matches');
+              updateProfile({ profileVisibility: 'matches' });
             }}
           >
-            <Text style={[styles.visibilityText, profileVisibility === 'contacts' && styles.visibilityTextActive]}>Contacts Only</Text>
+            <Text style={[styles.visibilityText, profileVisibility === 'matches' && styles.visibilityTextActive]}>Contacts Only</Text>
             <Text style={styles.visibilityDesc}>Only people you've chatted with can see your profile</Text>
           </TouchableOpacity>
         </ScrollView>
