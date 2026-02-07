@@ -120,30 +120,71 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         const userRef = doc(firebaseDb, 'users', result.user.uid);
         const userSnap = await getDoc(userRef);
         let user: User;
+        let needsSetup = false;
         if (userSnap.exists()) {
-          user = { id: userSnap.id, ...userSnap.data() } as User;
-        } else {
+          const userData = userSnap.data();
           user = {
             id: result.user.uid,
+            uid: result.user.uid,
             email: result.user.email || '',
-            displayName: result.user.displayName || '',
-            photoURL: result.user.photoURL || '',
-            nativeLanguage: '',
-            learningLanguages: [],
-            proficiencyLevel: 'beginner',
-            bio: '',
-            interests: [],
-            country: '',
+            name: userData.displayName || result.user.displayName || '',
+            avatar: userData.photoURL || result.user.photoURL || '',
+            photos: userData.photos || [],
+            bio: userData.bio || '',
+            nativeLanguage: userData.nativeLanguage || { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
+            learningLanguages: userData.learningLanguages || [],
             isOnline: true,
-            createdAt: new Date().toISOString(),
-            profileComplete: false,
+            lastSeen: new Date(),
+            country: userData.country || '',
+            city: userData.city || '',
+            age: userData.age || 0,
+            isVerified: userData.isVerified || false,
+            createdAt: userData.createdAt?.toDate() || new Date(),
           };
-          await setDoc(userRef, { ...user, createdAt: serverTimestamp(), lastSeen: serverTimestamp() });
+        } else {
+          needsSetup = true;
+          user = {
+            id: result.user.uid,
+            uid: result.user.uid,
+            email: result.user.email || '',
+            name: result.user.displayName || '',
+            avatar: result.user.photoURL || '',
+            photos: [],
+            bio: '',
+            nativeLanguage: { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
+            learningLanguages: [],
+            isOnline: true,
+            lastSeen: new Date(),
+            country: '',
+            city: '',
+            age: 0,
+            isVerified: false,
+            createdAt: new Date(),
+          };
+          await setDoc(userRef, {
+            uid: result.user.uid,
+            email: user.email,
+            displayName: user.name,
+            photoURL: user.avatar,
+            isOnline: true,
+            lastSeen: serverTimestamp(),
+            bio: '',
+            nativeLanguage: user.nativeLanguage,
+            learningLanguages: [],
+            country: '',
+            city: '',
+            age: 0,
+            isVerified: false,
+            photos: [],
+            createdAt: serverTimestamp(),
+          });
         }
-        const needsSetup = !user.profileComplete;
         const authData: StoredAuth = { user, isAuthenticated: true, needsProfileSetup: needsSetup, needsEmailVerification: false };
         await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
+        console.log('✅ Redirect login successful, setting auth state');
         setAuthState({ user, isAuthenticated: true, isLoading: false, needsProfileSetup: needsSetup });
+      } else {
+        console.log('No redirect result found (normal if not coming from redirect)');
       }
     }).catch((error) => {
       console.error('❌ Redirect result error:', error);
@@ -878,12 +919,21 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           });
           try {
             const result = await signInWithPopup(firebaseAuth, provider);
-            console.log('signInWithPopup result:', result);
+            console.log('✅ signInWithPopup success, user:', result.user.uid);
             firebaseUser = result.user;
           } catch (popupError: any) {
-            console.warn('signInWithPopup failed, trying redirect:', popupError?.code);
-            await signInWithRedirect(firebaseAuth, provider);
-            return { authData: { user: null, isAuthenticated: false, needsProfileSetup: false, needsEmailVerification: false }, shouldRedirect: false };
+            console.warn('⚠️ signInWithPopup failed:', popupError?.code, popupError?.message);
+            if (popupError?.code === 'auth/popup-closed-by-user' || popupError?.code === 'auth/cancelled-popup-request') {
+              throw new Error('Sign-in cancelled. Please try again.');
+            }
+            console.log('🔄 Falling back to signInWithRedirect...');
+            try {
+              await signInWithRedirect(firebaseAuth, provider);
+            } catch (redirectError: any) {
+              console.error('❌ signInWithRedirect also failed:', redirectError);
+              throw new Error('Google sign-in failed. Please try again.');
+            }
+            throw new Error('REDIRECT_IN_PROGRESS');
           }
         } else {
           console.log('Using expo-auth-session for native');
@@ -1069,6 +1119,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       });
     },
     onError: (error: any) => {
+      if (error?.message === 'REDIRECT_IN_PROGRESS') {
+        console.log('🔄 Google redirect in progress, page will reload...');
+        return;
+      }
       console.error('Google login mutation failed:', error);
       console.error('Error stack:', error.stack);
     },
