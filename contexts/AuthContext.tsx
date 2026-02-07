@@ -906,134 +906,132 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         throw new Error('Firebase is not initialized. Please refresh the page.');
       }
       
-      try {
-        console.log('Google login attempt, Platform:', Platform.OS);
+      console.log('========== GOOGLE LOGIN START ==========');
+      console.log('Platform:', Platform.OS);
+      console.log('Firebase Auth domain:', firebaseAuth.config?.authDomain);
+      
+      let firebaseUser;
+      
+      if (Platform.OS === 'web') {
+        console.log('🌐 Using signInWithPopup for web');
+        const provider = new GoogleAuthProvider();
+        provider.addScope('email');
+        provider.addScope('profile');
+        provider.setCustomParameters({
+          prompt: 'select_account'
+        });
         
-        let firebaseUser;
-        
-        if (Platform.OS === 'web') {
-          console.log('Using signInWithPopup for web');
-          const provider = new GoogleAuthProvider();
-          provider.setCustomParameters({
-            prompt: 'select_account'
-          });
-          try {
-            const result = await signInWithPopup(firebaseAuth, provider);
-            console.log('✅ signInWithPopup success, user:', result.user.uid);
-            firebaseUser = result.user;
-          } catch (popupError: any) {
-            console.warn('⚠️ signInWithPopup failed:', popupError?.code, popupError?.message);
-            if (popupError?.code === 'auth/popup-closed-by-user' || popupError?.code === 'auth/cancelled-popup-request') {
-              throw new Error('Sign-in cancelled. Please try again.');
-            }
-            console.log('🔄 Falling back to signInWithRedirect...');
-            try {
-              await signInWithRedirect(firebaseAuth, provider);
-            } catch (redirectError: any) {
-              console.error('❌ signInWithRedirect also failed:', redirectError);
-              throw new Error('Google sign-in failed. Please try again.');
-            }
-            throw new Error('REDIRECT_IN_PROGRESS');
-          }
-        } else {
-          console.log('Using expo-auth-session for native');
-          
-          const redirectUri = AuthSession.makeRedirectUri({
-            scheme: 'lanchat-app',
-            path: 'auth'
-          });
-          console.log('Redirect URI:', redirectUri);
-          
-          const discovery = {
-            authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-            tokenEndpoint: 'https://oauth2.googleapis.com/token',
-          };
-          
-          const authRequest = new AuthSession.AuthRequest({
-            clientId: GOOGLE_WEB_CLIENT_ID,
-            redirectUri,
-            scopes: ['openid', 'profile', 'email'],
-            responseType: AuthSession.ResponseType.IdToken,
-            extraParams: {
-              nonce: Math.random().toString(36).substring(2, 15),
-            },
-          });
-          
-          console.log('Starting auth request...');
-          const authResult = await authRequest.promptAsync(discovery);
-          console.log('Auth result:', authResult);
-          
-          if (authResult.type !== 'success') {
-            if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
-              throw new Error('Sign-in cancelled. Please try again.');
-            }
-            throw new Error('Google sign-in failed. Please try again.');
-          }
-          
-          const idToken = authResult.params?.id_token;
-          if (!idToken) {
-            console.error('No ID token in response:', authResult);
-            throw new Error('No ID token received from Google.');
-          }
-          
-          console.log('Got ID token, signing in with Firebase...');
-          const credential = GoogleAuthProvider.credential(idToken);
-          const userCredential = await signInWithCredential(firebaseAuth, credential);
-          firebaseUser = userCredential.user;
-        }
-        
-        console.log('Google auth successful, uid:', firebaseUser.uid);
-        
-        let user: User;
-        let needsProfileSetup = false;
+        console.log('📋 Provider created, attempting signInWithPopup...');
         
         try {
-          const userDocRef = doc(firebaseDb, 'users', firebaseUser.uid);
-          const userDoc = await getDoc(userDocRef);
+          const result = await signInWithPopup(firebaseAuth, provider);
+          console.log('✅ signInWithPopup SUCCESS');
+          console.log('  User UID:', result.user.uid);
+          console.log('  User email:', result.user.email);
+          console.log('  User displayName:', result.user.displayName);
+          firebaseUser = result.user;
+        } catch (popupError: any) {
+          console.error('❌ signInWithPopup FAILED');
+          console.error('  Error code:', popupError?.code);
+          console.error('  Error message:', popupError?.message);
+          console.error('  Full error:', JSON.stringify(popupError, null, 2));
           
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            user = {
-              id: firebaseUser.uid,
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              name: userData.displayName || firebaseUser.displayName || '',
-              avatar: userData.photoURL || firebaseUser.photoURL || '',
-              photos: userData.photos || [],
-              bio: userData.bio || '',
-              nativeLanguage: userData.nativeLanguage || { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
-              learningLanguages: userData.learningLanguages || [],
-              isOnline: true,
-              lastSeen: new Date(),
-              country: userData.country || '',
-              city: userData.city || '',
-              age: userData.age || 0,
-              isVerified: userData.isVerified || false,
-              createdAt: userData.createdAt?.toDate() || new Date(),
-            };
-          } else {
-            needsProfileSetup = true;
-            user = {
-              id: firebaseUser.uid,
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              name: firebaseUser.displayName || '',
-              avatar: firebaseUser.photoURL || '',
-              photos: [],
-              bio: '',
-              nativeLanguage: { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
-              learningLanguages: [],
-              isOnline: true,
-              lastSeen: new Date(),
-              country: '',
-              city: '',
-              age: 0,
-              isVerified: false,
-              createdAt: new Date(),
-            };
+          if (popupError?.code === 'auth/popup-closed-by-user' || popupError?.code === 'auth/cancelled-popup-request') {
+            throw new Error('Sign-in cancelled. Please try again.');
           }
-        } catch (firestoreError: any) {
-          console.log('Firestore offline or error, creating new user:', firestoreError.message);
+          if (popupError?.code === 'auth/popup-blocked') {
+            throw new Error('Popup was blocked by browser. Please allow popups for this site.');
+          }
+          if (popupError?.code === 'auth/unauthorized-domain') {
+            throw new Error('This domain is not authorized in Firebase. Add it to Authentication > Settings > Authorized domains.');
+          }
+          if (popupError?.code === 'auth/internal-error') {
+            throw new Error('Firebase internal error. Check Google Cloud Console OAuth settings and authorized domains.');
+          }
+          
+          throw popupError;
+        }
+      } else {
+        console.log('📱 Using expo-auth-session for native');
+        
+        const redirectUri = AuthSession.makeRedirectUri({
+          scheme: 'lanchat-app',
+          path: 'auth'
+        });
+        console.log('Redirect URI:', redirectUri);
+        
+        const discovery = {
+          authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+          tokenEndpoint: 'https://oauth2.googleapis.com/token',
+        };
+        
+        const authRequest = new AuthSession.AuthRequest({
+          clientId: GOOGLE_WEB_CLIENT_ID,
+          redirectUri,
+          scopes: ['openid', 'profile', 'email'],
+          responseType: AuthSession.ResponseType.IdToken,
+          extraParams: {
+            nonce: Math.random().toString(36).substring(2, 15),
+          },
+        });
+        
+        console.log('Starting auth request...');
+        const authResult = await authRequest.promptAsync(discovery);
+        console.log('Auth result type:', authResult.type);
+        
+        if (authResult.type !== 'success') {
+          if (authResult.type === 'cancel' || authResult.type === 'dismiss') {
+            throw new Error('Sign-in cancelled. Please try again.');
+          }
+          throw new Error('Google sign-in failed. Please try again.');
+        }
+        
+        const idToken = authResult.params?.id_token;
+        if (!idToken) {
+          console.error('No ID token in response:', authResult);
+          throw new Error('No ID token received from Google.');
+        }
+        
+        console.log('Got ID token, signing in with Firebase...');
+        const credential = GoogleAuthProvider.credential(idToken);
+        const userCredential = await signInWithCredential(firebaseAuth, credential);
+        firebaseUser = userCredential.user;
+      }
+      
+      console.log('🔥 Google auth successful, uid:', firebaseUser.uid);
+      console.log('  Processing user data...');
+      
+      let user: User;
+      let needsProfileSetup = false;
+      
+      try {
+        const userDocRef = doc(firebaseDb, 'users', firebaseUser.uid);
+        console.log('  Fetching user document from Firestore...');
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists()) {
+          console.log('  ✅ User document found in Firestore');
+          const userData = userDoc.data();
+          user = {
+            id: firebaseUser.uid,
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            name: userData.displayName || firebaseUser.displayName || '',
+            avatar: userData.photoURL || firebaseUser.photoURL || '',
+            photos: userData.photos || [],
+            bio: userData.bio || '',
+            nativeLanguage: userData.nativeLanguage || { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
+            learningLanguages: userData.learningLanguages || [],
+            isOnline: true,
+            lastSeen: new Date(),
+            country: userData.country || '',
+            city: userData.city || '',
+            age: userData.age || 0,
+            isVerified: userData.isVerified || false,
+            createdAt: userData.createdAt?.toDate() || new Date(),
+          };
+        } else {
+          console.log('  📝 New user, needs profile setup');
           needsProfileSetup = true;
           user = {
             id: firebaseUser.uid,
@@ -1054,63 +1052,70 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             createdAt: new Date(),
           };
         }
-        
-        try {
-          await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), {
-            uid: firebaseUser.uid,
-            email: user.email,
-            displayName: user.name,
-            photoURL: user.avatar,
-            isOnline: true,
-            lastSeen: serverTimestamp(),
-            bio: user.bio,
-            nativeLanguage: user.nativeLanguage,
-            learningLanguages: user.learningLanguages,
-            country: user.country,
-            city: user.city,
-            age: user.age,
-            isVerified: user.isVerified,
-            photos: user.photos,
-            createdAt: serverTimestamp(),
-          }, { merge: true });
-        } catch (setDocError: any) {
-          console.log('Firestore write failed (offline), will sync later:', setDocError.message);
-        }
-        
-        const authData: StoredAuth = {
-          user,
-          isAuthenticated: true,
-          needsProfileSetup,
-          needsEmailVerification: false,
+      } catch (firestoreError: any) {
+        console.warn('  ⚠️ Firestore read error:', firestoreError.message);
+        needsProfileSetup = true;
+        user = {
+          id: firebaseUser.uid,
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          name: firebaseUser.displayName || '',
+          avatar: firebaseUser.photoURL || '',
+          photos: [],
+          bio: '',
+          nativeLanguage: { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
+          learningLanguages: [],
+          isOnline: true,
+          lastSeen: new Date(),
+          country: '',
+          city: '',
+          age: 0,
+          isVerified: false,
+          createdAt: new Date(),
         };
-        await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
-        
-        console.log('Google login successful!');
-        return { authData, shouldRedirect: true };
-      } catch (error: any) {
-        console.error('Google login error:', error);
-        console.error('Error code:', error.code);
-        console.error('Error message:', error.message);
-        
-        let userFriendlyMessage = 'Google sign-in failed. Please try again.';
-        
-        if (error.code === 'auth/popup-closed-by-user') {
-          userFriendlyMessage = 'Sign-in cancelled. Please try again.';
-        } else if (error.code === 'auth/popup-blocked') {
-          userFriendlyMessage = 'Popup was blocked. Please allow popups and try again.';
-        } else if (error.code === 'auth/network-request-failed') {
-          userFriendlyMessage = 'Network error. Please check your internet connection.';
-        } else if (error.code === 'auth/too-many-requests') {
-          userFriendlyMessage = 'Too many requests. Please try again later.';
-        } else if (error.message) {
-          userFriendlyMessage = error.message;
-        }
-        
-        throw new Error(userFriendlyMessage);
       }
+      
+      try {
+        console.log('  Writing user document to Firestore...');
+        await setDoc(doc(firebaseDb, 'users', firebaseUser.uid), {
+          uid: firebaseUser.uid,
+          email: user.email,
+          displayName: user.name,
+          photoURL: user.avatar,
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+          bio: user.bio,
+          nativeLanguage: user.nativeLanguage,
+          learningLanguages: user.learningLanguages,
+          country: user.country,
+          city: user.city,
+          age: user.age,
+          isVerified: user.isVerified,
+          photos: user.photos,
+          createdAt: serverTimestamp(),
+        }, { merge: true });
+        console.log('  ✅ Firestore write successful');
+      } catch (setDocError: any) {
+        console.warn('  ⚠️ Firestore write error:', setDocError.message);
+      }
+      
+      const authData: StoredAuth = {
+        user,
+        isAuthenticated: true,
+        needsProfileSetup,
+        needsEmailVerification: false,
+      };
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
+      
+      console.log('✅ Google login COMPLETE');
+      console.log('  isAuthenticated:', true);
+      console.log('  needsProfileSetup:', needsProfileSetup);
+      console.log('========== GOOGLE LOGIN END ==========');
+      return { authData, shouldRedirect: true };
     },
     onSuccess: (data) => {
-      console.log('Google login mutation success callback');
+      console.log('🎉 Google login onSuccess callback firing');
+      console.log('  Setting isAuthenticated=true, needsProfileSetup=', data.authData.needsProfileSetup);
       setAuthState({
         user: data.authData.user,
         isAuthenticated: true,
@@ -1119,12 +1124,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       });
     },
     onError: (error: any) => {
-      if (error?.message === 'REDIRECT_IN_PROGRESS') {
-        console.log('🔄 Google redirect in progress, page will reload...');
-        return;
-      }
-      console.error('Google login mutation failed:', error);
-      console.error('Error stack:', error.stack);
+      console.error('❌ Google login onError callback');
+      console.error('  Error message:', error?.message);
+      console.error('  Error code:', error?.code);
+      console.error('  Error stack:', error?.stack);
     },
   });
 
