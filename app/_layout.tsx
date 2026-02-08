@@ -53,14 +53,20 @@ function RootLayoutNav() {
         const inVerifyEmail = segments[0] === '(auth)' && segments[1] === 'verify-email';
         const inTabs = segments[0] === '(tabs)';
         const inPrivacy = segments[0] === 'privacy';
+        const inTerms = segments[0] === 'terms-of-service';
+        const inChildSafety = segments[0] === 'child-safety';
+        const inDataDeletion = segments[0] === 'data-deletion';
+        const inDeleteAccount = segments[0] === 'delete-account';
+        const isLanding = segments[0] === undefined;
+        const isPublicPage = inPrivacy || inTerms || inChildSafety || inDataDeletion || inDeleteAccount || isLanding;
 
         console.log('Navigation check:', { isAuthenticated, needsEmailVerification, needsProfileSetup, user: !!user, segments });
 
-        if (inPrivacy) {
+        if (isPublicPage && !isAuthenticated) {
           return;
         }
 
-        if (!isAuthenticated && !needsEmailVerification && !inAuth) {
+        if (!isAuthenticated && !needsEmailVerification && !inAuth && !isPublicPage) {
           console.log('Not authenticated, redirecting to login');
           router.replace('/(auth)/login');
         } else if (needsEmailVerification && user && !inVerifyEmail) {
@@ -69,7 +75,7 @@ function RootLayoutNav() {
         } else if (isAuthenticated && needsProfileSetup && !inProfileSetup) {
           console.log('Profile setup needed, redirecting');
           router.replace('/profile-setup');
-        } else if (isAuthenticated && !needsProfileSetup && !needsEmailVerification && (inAuth || (!inTabs && segments[0] === undefined))) {
+        } else if (isAuthenticated && !needsProfileSetup && !needsEmailVerification && (inAuth || isLanding)) {
           console.log('Authenticated and ready, redirecting to community');
           router.replace('/(tabs)/community');
         }
