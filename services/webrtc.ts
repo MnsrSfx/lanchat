@@ -105,6 +105,8 @@ class WebRTCService {
   private isCleanedUp: boolean = false;
   private isSpeakerOn: boolean = true;
   private isMuted: boolean = false;
+  private pendingIceCandidates: RTCIceCandidateInit[] = [];
+  private hasRemoteDescription: boolean = false;
 
   isSupported(): boolean {
     if (Platform.OS === 'web') {
@@ -244,6 +246,8 @@ class WebRTCService {
     this.callId = callId;
     this.isCaller = true;
     this.lastActivityTime = Date.now();
+    this.pendingIceCandidates = [];
+    this.hasRemoteDescription = false;
 
     console.log('📞 Starting WebRTC call:', callId);
 
@@ -293,6 +297,8 @@ class WebRTCService {
     this.callId = callId;
     this.isCaller = false;
     this.lastActivityTime = Date.now();
+    this.pendingIceCandidates = [];
+    this.hasRemoteDescription = false;
 
     console.log('📞 Answering WebRTC call:', callId);
 
@@ -323,6 +329,9 @@ class WebRTCService {
 
       console.log('📝 Setting remote description (offer)...');
       await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+      this.hasRemoteDescription = true;
+      console.log('✅ Remote description set, flushing pending candidates...');
+      await this.flushPendingIceCandidates();
 
       console.log('📝 Creating answer...');
       const answer = await pc.createAnswer();
@@ -347,6 +356,24 @@ class WebRTCService {
     }
   }
 
+  private async flushPendingIceCandidates() {
+    if (!this.peerConnection || this.pendingIceCandidates.length === 0) return;
+    
+    console.log('🧊 Flushing', this.pendingIceCandidates.length, 'queued ICE candidates');
+    const candidates = [...this.pendingIceCandidates];
+    this.pendingIceCandidates = [];
+    
+    for (const candidateData of candidates) {
+      try {
+        await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidateData));
+        this.lastActivityTime = Date.now();
+        console.log('🧊 Queued ICE candidate added successfully');
+      } catch (error) {
+        console.error('❌ Error adding queued ICE candidate:', error);
+      }
+    }
+  }
+
   private listenForAnswer(callId: string) {
     if (!db) return;
 
@@ -358,7 +385,9 @@ class WebRTCService {
         console.log('📝 Answer received, setting remote description...');
         try {
           await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+          this.hasRemoteDescription = true;
           console.log('✅ Remote description set (answer)');
+          await this.flushPendingIceCandidates();
         } catch (error) {
           console.error('❌ Error setting remote description:', error);
         }
@@ -375,13 +404,15 @@ class WebRTCService {
       snapshot.docChanges().forEach(async (change) => {
         if (change.type === 'added' && this.peerConnection && !this.isCleanedUp) {
           const candidateData = change.doc.data();
-          console.log('🧊 Adding ICE candidate from', candidateCollection);
+          console.log('🧊 Received ICE candidate from', candidateCollection);
           try {
-            if (this.peerConnection.remoteDescription) {
+            if (this.hasRemoteDescription && this.peerConnection.remoteDescription) {
               await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidateData));
               this.lastActivityTime = Date.now();
+              console.log('🧊 ICE candidate added successfully');
             } else {
-              console.log('⏳ Waiting for remote description before adding ICE candidate');
+              console.log('⏳ Queuing ICE candidate - waiting for remote description');
+              this.pendingIceCandidates.push(candidateData as RTCIceCandidateInit);
             }
           } catch (error) {
             console.error('❌ Error adding ICE candidate:', error);
@@ -448,41 +479,32 @@ class WebRTCService {
   private startCredentialRefresh() {
     if (this.credentialRefreshInterval) return;
     
-    console.log('🔄 Starting TURN credential refresh interval (every 25s)...');
+    console.log('🔄 Starting TURN credential refresh interval (every 5min)...');
     this.credentialRefreshInterval = setInterval(async () => {
       if (this.isCleanedUp || !this.peerConnection) {
         this.stopCredentialRefresh();
         return;
       }
       
-      const connectionState = this.peerConnection?.connectionState;
       const iceState = this.peerConnection?.iceConnectionState;
       
-      // Only refresh if connection is active
-      if (connectionState === 'connected' || iceState === 'connected' || iceState === 'completed') {
-        console.log('🔄 Refreshing TURN credentials to prevent timeout...');
-        
-        // Clear cache to force fresh credentials
+      if (iceState === 'disconnected' || iceState === 'failed') {
+        console.log('🔄 Connection degraded, refreshing TURN credentials...');
         cachedIceServers = null;
         cacheTimestamp = 0;
+        await fetchMeteredIceServers();
         
-        // Fetch fresh credentials
-        const freshIceServers = await fetchMeteredIceServers();
-        console.log('🔄 Got fresh TURN credentials, count:', freshIceServers.length);
-        
-        // Perform ICE restart to use new credentials
         if (this.peerConnection && this.peerConnection.restartIce) {
           try {
-            console.log('🔄 Triggering ICE restart with fresh credentials...');
+            console.log('🔄 Triggering ICE restart...');
             this.peerConnection.restartIce();
             this.lastActivityTime = Date.now();
-            console.log('✅ ICE restart triggered successfully');
           } catch (error) {
             console.error('❌ Error during ICE restart:', error);
           }
         }
       }
-    }, 25000); // Refresh every 25 seconds (before 30s TURN TTL expires)
+    }, 300000); // Only refresh every 5 minutes and only when connection is degraded
   }
   
   private stopCredentialRefresh() {
@@ -689,6 +711,8 @@ class WebRTCService {
     this.isCaller = false;
     this.isCleanedUp = false;
     this.lastActivityTime = Date.now();
+    this.pendingIceCandidates = [];
+    this.hasRemoteDescription = false;
 
     console.log('✅ WebRTC cleanup complete');
   }
