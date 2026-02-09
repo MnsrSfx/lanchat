@@ -109,7 +109,10 @@ export default function ChatScreen() {
       (userDoc: DocumentSnapshot) => {
         if (userDoc.exists()) {
           const data = userDoc.data();
-          console.log('📥 User data updated:', data.displayName, 'isOnline:', data.isOnline);
+          const lastSeenDate = data.lastSeen?.toDate() || new Date(0);
+          const timeDiffMs = Date.now() - lastSeenDate.getTime();
+          const isActuallyOnline = (data.isOnline === true) && timeDiffMs < 120000;
+          console.log('📥 User data updated:', data.displayName, 'isOnline:', data.isOnline, 'isActuallyOnline:', isActuallyOnline, 'lastSeen diff:', timeDiffMs);
           setUser({
             id: userDoc.id,
             uid: data.uid,
@@ -120,8 +123,8 @@ export default function ChatScreen() {
             bio: data.bio || '',
             nativeLanguage: data.nativeLanguage || { code: 'en', name: 'English', flag: '🇺🇸', level: 'native' },
             learningLanguages: data.learningLanguages || [],
-            isOnline: data.isOnline || false,
-            lastSeen: data.lastSeen?.toDate() || new Date(),
+            isOnline: isActuallyOnline,
+            lastSeen: lastSeenDate,
             country: data.country || '',
             city: data.city || '',
             age: data.age || 0,
