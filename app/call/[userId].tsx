@@ -17,6 +17,8 @@ import {
   MicOff, 
   Volume2, 
   VolumeX,
+  ChevronDown,
+  MessageCircle,
 } from 'lucide-react-native';
 import { db } from '@/src/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -174,6 +176,23 @@ export default function CallScreen() {
     }
   }, [userId]);
 
+  const handleMinimize = useCallback(() => {
+    console.log('📞 Minimizing call - navigating to chats');
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/chats');
+    }
+  }, []);
+
+  const handleGoToChat = useCallback(() => {
+    const chatUserId = targetUserIdRef.current || userId;
+    if (chatUserId) {
+      console.log('📞 Going to chat while in call:', chatUserId);
+      router.push(`/chat/${chatUserId}` as any);
+    }
+  }, [userId]);
+
   useEffect(() => {
     if (hasNavigatedAway.current) return;
     
@@ -266,6 +285,18 @@ export default function CallScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
+
+      {activeCall?.status === 'accepted' && (
+        <View style={styles.topBar}>
+          <TouchableOpacity style={styles.minimizeButton} onPress={handleMinimize}>
+            <ChevronDown size={24} color={Colors.light.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.chatButton} onPress={handleGoToChat}>
+            <MessageCircle size={20} color={Colors.light.tint} />
+            <Text style={styles.chatButtonText}>Mesajlar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.content}>
         <View style={styles.userInfo}>
@@ -386,6 +417,35 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  minimizeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.light.tintLight,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  chatButtonText: {
+    color: Colors.light.tint,
+    fontSize: 14,
     fontWeight: '600' as const,
   },
   content: {

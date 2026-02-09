@@ -4,8 +4,10 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { CallProvider, useCall } from '@/contexts/CallContext';
 import IncomingCallModal from '@/components/IncomingCallModal';
+import ActiveCallBanner from '@/components/ActiveCallBanner';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +35,20 @@ function CallHandler() {
       onAccept={handleAccept}
       onDecline={declineCall}
     />
+  );
+}
+
+function ActiveCallBannerWrapper() {
+  const segments = useSegments();
+  const insets = useSafeAreaInsets();
+  const isOnCallScreen = segments[0] === 'call';
+
+  if (isOnCallScreen) return null;
+
+  return (
+    <View style={{ paddingTop: insets.top }}>
+      <ActiveCallBanner />
+    </View>
   );
 }
 
@@ -101,8 +117,9 @@ function RootLayoutNav() {
     <>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="chat/[userId]" options={{ headerShown: true }} />
-        <Stack.Screen name="call/[userId]" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+        <Stack.Screen name="call/[userId]" options={{ headerShown: false, presentation: 'modal' }} />
       </Stack>
+      <ActiveCallBannerWrapper />
       <CallHandler />
     </>
   );
