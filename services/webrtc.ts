@@ -707,7 +707,6 @@ class WebRTCService {
 
     this.callId = null;
     this.remoteStream = null;
-    this.callbacks = {};
     this.isCaller = false;
     this.isCleanedUp = false;
     this.lastActivityTime = Date.now();
