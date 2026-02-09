@@ -17,7 +17,7 @@ export default function CommunityLayout() {
       <Stack.Screen 
         name="index" 
         options={{ 
-          title: 'Community',
+          title: 'Society',
           headerLeft: () => (
             <TouchableOpacity 
               onPress={() => router.canGoBack() ? router.back() : null}

@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { ArrowLeft, Search, MessageCircle } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/src/firebase';
-import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, DocumentSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, Timestamp, onSnapshot, doc, DocumentSnapshot, writeBatch, getDoc } from 'firebase/firestore';
 import Colors from '@/constants/colors';
 
 interface ChatItem {
@@ -80,10 +80,13 @@ export default function ChatsScreen() {
               
               if (!userDocSnap.empty) {
                 const userData = userDocSnap.docs[0].data();
+                const lastSeenDate = userData.lastSeen ? (userData.lastSeen as Timestamp).toDate() : new Date(0);
+                const timeDiffMs = new Date().getTime() - lastSeenDate.getTime();
+                const isActuallyOnline = userData.isOnline && timeDiffMs < 120000;
                 userDataCache.set(otherUserId, {
                   name: userData.displayName || 'Unknown User',
                   avatar: userData.photoURL || '',
-                  isOnline: userData.isOnline || false,
+                  isOnline: isActuallyOnline,
                 });
               }
             } catch (error) {
@@ -97,10 +100,13 @@ export default function ChatsScreen() {
             const userUnsubscribe = onSnapshot(userDocRef, (userDoc: DocumentSnapshot) => {
               if (userDoc.exists()) {
                 const otherUserData = userDoc.data();
+                const lastSeenDate = otherUserData.lastSeen ? (otherUserData.lastSeen as Timestamp).toDate() : new Date(0);
+                const timeDiffMs = new Date().getTime() - lastSeenDate.getTime();
+                const isActuallyOnline = otherUserData.isOnline && timeDiffMs < 120000;
                 const userData = {
                   name: otherUserData.displayName || 'Unknown User',
                   avatar: otherUserData.photoURL || '',
-                  isOnline: otherUserData.isOnline || false,
+                  isOnline: isActuallyOnline,
                 };
                 
                 console.log('📡 User data updated:', userData.name, 'isOnline:', userData.isOnline);
