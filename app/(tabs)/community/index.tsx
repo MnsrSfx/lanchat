@@ -309,7 +309,7 @@ export default function CommunityScreen() {
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          title: 'Community',
+          title: 'Society',
           headerLargeTitle: true,
         }}
       />
