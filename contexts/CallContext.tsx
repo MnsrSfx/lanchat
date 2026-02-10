@@ -57,6 +57,7 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
   const callAnsweredAtRef = useRef<number | null>(null);
   const callDurationRef = useRef<number>(0);
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const processedCallIdsRef = useRef<Set<string>>(new Set());
 
   const saveCallMessageToChat = useCallback(async (
     callerId: string,
@@ -409,11 +410,33 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         return;
       }
 
-      snapshot.docs.forEach((doc, index) => {
+      const validDocs = snapshot.docs.filter(d => {
+        if (processedCallIdsRef.current.has(d.id)) {
+          console.log('📞 Skipping already processed call:', d.id);
+          return false;
+        }
+        const data = d.data();
+        const createdAt = data.createdAt?.toDate?.() || new Date();
+        const ageMs = Date.now() - createdAt.getTime();
+        if (ageMs > 60000) {
+          console.log('📞 Skipping stale call (age:', Math.round(ageMs/1000), 's):', d.id);
+          return false;
+        }
+        return true;
+      });
+
+      if (validDocs.length === 0) {
+        console.log('📞 No valid incoming calls after filtering');
+        stopRingtone();
+        setIncomingCall(null);
+        return;
+      }
+
+      validDocs.forEach((doc, index) => {
         console.log(`📞 Call doc ${index}:`, doc.id, doc.data());
       });
 
-      const callDoc = snapshot.docs[0];
+      const callDoc = validDocs[0];
       const data = callDoc.data();
       
       console.log('📞 Processing call:', callDoc.id);
@@ -442,8 +465,12 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       console.log('📞 Status:', call.status);
       console.log('📞 ====================================');
       
-      setIncomingCall(call);
-      playRingtone();
+      if (!processedCallIdsRef.current.has(call.id)) {
+        setIncomingCall(call);
+        playRingtone();
+      } else {
+        console.log('📞 Call already processed, not setting incoming:', call.id);
+      }
     }, (error) => {
       console.error('❌ ====================================');
       console.error('❌ ERROR LISTENING FOR CALLS');
@@ -504,6 +531,13 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       
       if (updatedCall.status === 'declined' || updatedCall.status === 'ended' || updatedCall.status === 'missed') {
         console.log('📞 Call ended with status:', updatedCall.status);
+        
+        if (callTimeoutRef.current) {
+          console.log('📞 Clearing call timeout - call ended');
+          clearTimeout(callTimeoutRef.current);
+          callTimeoutRef.current = null;
+        }
+        
         if (!isEndingCallRef.current) {
           let callStatus: 'completed' | 'missed' | 'declined' = 'completed';
           if (updatedCall.status === 'missed') callStatus = 'missed';
@@ -539,10 +573,12 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
           callAnsweredAtRef.current = null;
           callDurationRef.current = 0;
 
+          processedCallIdsRef.current.add(updatedCall.id);
           webRTCService.cleanup();
           setActiveCall(null);
           stopRingtone();
           stopRingback();
+          stopAllWebAudio();
           setIsMuted(false);
           setIsSpeaker(true);
           setRemoteMuted(false);
@@ -685,7 +721,8 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
         if (isEndingCallRef.current) return;
         isEndingCallRef.current = true;
         
-        // Stop ringback sound immediately
+        processedCallIdsRef.current.add(callId);
+        
         stopRingback();
         stopAllWebAudio();
         
@@ -738,7 +775,8 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       
       const callDocRef = doc(db, 'calls', incomingCall.id);
       
-      // Stop all ring sounds immediately and forcefully
+      processedCallIdsRef.current.add(incomingCall.id);
+      
       console.log('📞 Forcefully stopping all ring sounds');
       stopRingtone();
       stopRingback();
@@ -794,12 +832,14 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       });
       
       console.log('📞 Call declined');
+      processedCallIdsRef.current.add(incomingCall.id);
       stopRingtone();
+      stopAllWebAudio();
       setIncomingCall(null);
     } catch (error) {
       console.error('❌ Error declining call:', error);
     }
-  }, [incomingCall, user?.uid, stopRingtone]);
+  }, [incomingCall, user?.uid, stopRingtone, stopAllWebAudio]);
 
   const endCall = useCallback(async () => {
     const callToEnd = activeCall || incomingCall;
@@ -824,7 +864,10 @@ export const [CallProvider, useCall] = createContextHook<CallContextValue>(() =>
       durationIntervalRef.current = null;
     }
     
-    // Always cleanup local state even if no active call
+    if (callToEnd?.id) {
+      processedCallIdsRef.current.add(callToEnd.id);
+    }
+
     await webRTCService.cleanup();
     stopRingtone();
     stopRingback();
